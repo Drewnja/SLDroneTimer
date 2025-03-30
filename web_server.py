@@ -449,6 +449,24 @@ def kill_script():
         logger.error(f"Failed to terminate script: {e}")
         return jsonify({"success": False, "error": str(e)})
 
+@app.route('/api/shutdown_system', methods=['POST'])
+def shutdown_system():
+    """API endpoint to safely shut down the Raspberry Pi"""
+    try:
+        logger.warning("System shutdown initiated from web interface")
+        
+        # Use subprocess to run the shutdown command
+        # This command requires sudo privileges, which should be set up for the user running the script
+        shutdown_command = ["sudo", "shutdown", "-h", "now"]
+        
+        # Execute the command in a non-blocking way
+        subprocess.Popen(shutdown_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        
+        return jsonify({"success": True})
+    except Exception as e:
+        logger.error(f"Failed to shutdown system: {e}")
+        return jsonify({"success": False, "error": str(e)})
+
 @app.route('/api/save_direct_mode', methods=['POST'])
 def save_direct_mode():
     """API endpoint to save direct mode setting to config file"""

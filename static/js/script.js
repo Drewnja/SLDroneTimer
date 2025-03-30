@@ -102,6 +102,28 @@ function initPage() {
         });
     }
     
+    // Add shutdown button listener
+    const shutdownSystem = document.getElementById('shutdown-system');
+    if (shutdownSystem) {
+        shutdownSystem.addEventListener('click', function() {
+            document.getElementById('shutdown-confirm').style.display = 'block';
+            hideAllPanels(['shutdown-confirm']);
+        });
+    }
+    
+    // Add shutdown confirmation listeners
+    const confirmShutdown = document.getElementById('confirm-shutdown');
+    if (confirmShutdown) {
+        confirmShutdown.addEventListener('click', shutdownRaspberryPi);
+    }
+    
+    const cancelShutdown = document.getElementById('cancel-shutdown');
+    if (cancelShutdown) {
+        cancelShutdown.addEventListener('click', function() {
+            document.getElementById('shutdown-confirm').style.display = 'none';
+        });
+    }
+    
     // Add kill script button listener
     const killScript = document.getElementById('kill-script');
     if (killScript) {
@@ -174,7 +196,8 @@ function hideAllPanels(exceptPanels = []) {
         'reboot-confirm',
         'kill-confirm',
         'dangerous-options',
-        'clear-matches-confirm'
+        'clear-matches-confirm',
+        'shutdown-confirm'
     ];
     
     // Hide all panels except the ones specified
@@ -649,5 +672,46 @@ function clearMatchHistory() {
     .catch(error => {
         // Show error
         matchesContainer.innerHTML = `<div class="error-message">Request failed: ${error}</div>`;
+    });
+}
+
+function shutdownRaspberryPi() {
+    const resultElement = document.getElementById('ntp-sync-result');
+    resultElement.style.display = 'none';
+    
+    // Hide the confirmation dialog
+    document.getElementById('shutdown-confirm').style.display = 'none';
+    
+    fetch('/api/shutdown_system', {
+        method: 'POST'
+    })
+    .then(response => response.json())
+    .then(data => {
+        resultElement.style.display = 'block';
+        
+        if (data.success) {
+            resultElement.className = 'success-message';
+            resultElement.innerHTML = 'System shutdown initiated. The Raspberry Pi is shutting down...';
+            
+            // Disable all control buttons during shutdown
+            const buttons = document.querySelectorAll('button');
+            buttons.forEach(button => {
+                button.disabled = true;
+            });
+            
+            // Show final message
+            setTimeout(() => {
+                resultElement.innerHTML = 'System is shutting down. You will see a connection lost message when the process is complete. Do not unplug power until then.';
+            }, 5000);
+            
+        } else {
+            resultElement.className = 'error-message';
+            resultElement.innerHTML = `Failed to shutdown system: ${data.error}`;
+        }
+    })
+    .catch(error => {
+        resultElement.style.display = 'block';
+        resultElement.className = 'error-message';
+        resultElement.innerHTML = `Request failed: ${error}`;
     });
 } 

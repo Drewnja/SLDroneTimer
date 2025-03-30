@@ -28,6 +28,7 @@
         <div class="header-actions">
             <button id="kill-script" class="btn btn-danger">Kill Script</button>
             <button id="reboot-system" class="btn btn-danger">Reboot System</button>
+            <button id="shutdown-system" class="btn btn-danger">Safe Shutdown</button>
         </div>
     </header>
     
@@ -84,6 +85,17 @@
                         <div class="editor-controls">
                             <button id="confirm-reboot" class="btn btn-danger">Yes, Reboot Now</button>
                             <button id="cancel-reboot" class="btn">Cancel</button>
+                        </div>
+                    </div>
+                    
+                    <div id="shutdown-confirm" class="hidden-panel">
+                        <h3>Confirm System Shutdown</h3>
+                        <p class="warning-text">Are you sure you want to shut down the Raspberry Pi?</p>
+                        <p>The system will power off completely. The shutdown process takes about a minute.</p>
+                        <p><strong>Important:</strong> Do not unplug power from the Pi until you see a connection lost banner in your browser!</p>
+                        <div class="editor-controls">
+                            <button id="confirm-shutdown" class="btn btn-danger">Yes, Shut Down Now</button>
+                            <button id="cancel-shutdown" class="btn">Cancel</button>
                         </div>
                     </div>
                     
