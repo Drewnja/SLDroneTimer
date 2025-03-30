@@ -272,15 +272,9 @@ class SensorSystem:
             logger.warning("Some services are not available, but system will continue to function.")
     
     def get_current_time(self):
-        """Get current time from NTP server with millisecond precision"""
-        try:
-            # Try to get time from any available NTP server
-            ntp_response = self.try_ntp_sync()
-            return ntp_response.tx_time
-        except:
-            logger.warning("Using system time as NTP sync failed")
-            # Fallback to system time if NTP fails
-            return time.time()
+        """Get current time with millisecond precision (using system time)"""
+        # Use system time directly without NTP sync
+        return time.time()
     
     def error_blink_pattern(self, count):
         """Error indication - alternates all LEDs in a pattern"""
@@ -522,13 +516,15 @@ class SensorSystem:
     def trigger_start_event(self):
         """Trigger the start event directly (used in debug mode)"""
         logger.info("DEBUG: Triggering start event immediately")
-        event_time = self.get_current_time()
+        # Use system time directly instead of get_current_time to avoid NTP sync
+        event_time = time.time()
         self.send_post_request_take_off(SIDE, event_time)
     
     def trigger_finish_event(self):
         """Trigger the finish event directly (used in debug mode)"""
         logger.info("DEBUG: Triggering finish event immediately")
-        event_time = self.get_current_time()
+        # Use system time directly instead of get_current_time to avoid NTP sync
+        event_time = time.time()
         self.send_post_request_landing(SIDE, event_time)
     
     def start_web_server(self):
@@ -616,7 +612,8 @@ class SensorSystem:
                             logger.info("Start sensor released before 2 seconds - ignoring")
                         elif self.ff and self.start_activated:
                             logger.info("Triggering take-off event")
-                            event_time = self.get_current_time()
+                            # Use system time directly instead of get_current_time to avoid NTP sync
+                            event_time = time.time()
                             self.send_post_request_take_off(SIDE, event_time)
                         
                         self.ff = False
@@ -646,7 +643,8 @@ class SensorSystem:
                     logger.info("Triggering landing event")
                     
                     # Record timestamp immediately when the event is triggered
-                    event_time = self.get_current_time()
+                    # Use system time directly instead of get_current_time to avoid NTP sync
+                    event_time = time.time()
                     
                     GPIO.output(LED_FINISH_PIN, GPIO.HIGH)
                     GPIO.output(LED_FINISH2_PIN, GPIO.LOW)
