@@ -19,6 +19,74 @@ The SL Timer system uses sensors connected to a Raspberry Pi to detect when dron
 - Configurable track side (red or blue)
 - Real-time log viewing
 
+## Installation
+
+### 1. Python Setup
+
+Ensure Python 3 is installed on your Raspberry Pi:
+
+```bash
+sudo apt update
+sudo apt install python3 python3-pip python3-venv
+```
+
+### 2. Install the Application
+
+```bash
+# Clone the repository
+git clone https://github.com/YourUsername/SLDroneTimer.git
+cd SLDroneTimer
+
+# Create a virtual environment
+python3 -m venv venv
+
+# Activate the virtual environment
+source venv/bin/activate
+
+# Install dependencies
+pip install -r requirements.txt
+```
+
+### 3. Setup Auto-start on Boot
+
+Create a systemd service to run the application on startup:
+
+```bash
+sudo nano /etc/systemd/system/dronetimer.service
+```
+
+Add the following content (adjust paths as needed):
+
+```
+[Unit]
+Description=SL Drone Timer
+After=network.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/SLDroneTimer
+ExecStart=/home/pi/SLDroneTimer/venv/bin/python /home/pi/SLDroneTimer/main.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Enable and start the service:
+
+```bash
+sudo systemctl enable dronetimer.service
+sudo systemctl start dronetimer.service
+```
+
+Check the status:
+
+```bash
+sudo systemctl status dronetimer.service
+```
+
 ## Configuration
 
 The system is configured using a `config.json` file. An example file (`example-config.json`) is provided as a template. Copy this file to `config.json` and modify it with your specific settings.
