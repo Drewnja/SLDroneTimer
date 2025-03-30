@@ -525,7 +525,14 @@ class SensorSystem:
         logger.info("DEBUG: Triggering finish event immediately")
         # Use system time directly instead of get_current_time to avoid NTP sync
         event_time = time.time()
-        self.send_post_request_landing(SIDE, event_time)
+        success = self.send_post_request_landing(SIDE, event_time)
+        
+        # Force NTP update AFTER landing event is processed (same as in main loop)
+        try:
+            ntp_response = self.try_ntp_sync()
+            logger.info("NTP time updated after landing event processing")
+        except Exception as e:
+            logger.warning(f"Could not update NTP time after landing event: {e}")
     
     def start_web_server(self):
         """Start the web server in a separate thread"""
