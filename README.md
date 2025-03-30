@@ -1,3 +1,7 @@
+![logo](static/favicon.png)
+
+
+
 # SL Timer System
 
 A Raspberry Pi-based timing system for drone racing competitions that captures start and finish events and sends them to a central server. Features a web interface for configuration and monitoring.
