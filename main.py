@@ -37,6 +37,11 @@ DEFAULT_CONFIG = {
         "host": "192.168.1.165",
         "port": 1337,
         "path": "/proxy"
+    },
+    "direct": {
+        "url": "https://example.com/api/v1/drone_racing/sensor/action",
+        "station_code": "station_1",
+        "secure_key": "key"
     }
 }
 
