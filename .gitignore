@@ -1,0 +1,25 @@
+# Python bytecode files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Sensitive configuration files
+config.json
+
+# Logs
+*.log
+
+# Database files
+*.db
+*.sqlite3
+
+# Environment and local settings
+.env
+.venv
+env/
+venv/
+ENV/
+
+# OS specific files
+.DS_Store
+Thumbs.db 

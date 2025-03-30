@@ -1,0 +1,25 @@
+{
+    "direct_mode": false,
+    "side": 1,
+    "ntp_servers": [
+        "pool.ntp.org",
+        "time.google.com",
+        "time.windows.com",
+        "time.apple.com", 
+        "time.cloudflare.com",
+        "time.nist.gov",
+        "europe.pool.ntp.org",
+        "asia.pool.ntp.org",
+        "north-america.pool.ntp.org"
+    ],
+    "proxy": {
+        "host": "proxy-server-ip",
+        "port": 1337,
+        "path": "/proxy"
+    },
+    "direct": {
+        "url": "https://your-api-endpoint.com/api/path",
+        "station_code": "your_station_code",
+        "secure_key": "your_secure_key_here"
+    }
+} 

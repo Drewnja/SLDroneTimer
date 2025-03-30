@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Drone Racing System Monitor</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="icon" href="{{ url_for('static', filename='favicon.png') }}">
+    <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+</head>
+<body>
+    <!-- Connection loss banner -->
+    <div id="connection-loss-banner" class="connection-banner hidden">
+        <div class="banner-content">
+            <span class="banner-text">Connection to the server has been lost. Attempting to reconnect...</span>
+            <button id="close-banner" class="btn-sm">×</button>
+        </div>
+    </div>
+    
+    <header>
+        <div class="header-logo">
+            <img src="{{ url_for('static', filename='favicon.png') }}" alt="Logo" class="logo">
+            <h1>SL Timer Web Config 
+                <span class="side-indicator {{ 'red-side' if side == 1 else 'blue-side' }}">
+                    {{ 'RED TRACK' if side == 1 else 'BLUE TRACK' }}
+                </span>
+            </h1>
+        </div>
+        <div class="header-actions">
+            <button id="kill-script" class="btn btn-danger">Kill Script</button>
+            <button id="reboot-system" class="btn btn-danger">Reboot System</button>
+        </div>
+    </header>
+    
+    <div class="tabs-container">
+        <div class="tabs">
+            <button class="tab-button active" data-tab="main-tab">System Monitor</button>
+            <button class="tab-button" data-tab="matches-tab">Local Matches</button>
+        </div>
+    </div>
+    
+    <div class="container">
+        <!-- Main Tab (System Monitor) -->
+        <div id="main-tab" class="tab-content active">
+            <div class="card">
+                <div class="card-header">System Actions</div>
+                <div class="card-body">
+                    <div class="system-actions">
+                        <div class="action-row">
+                            <button id="sync-ntp" class="btn btn-success">Sync NTP Time</button>
+                            <button id="edit-ntp" class="btn btn-primary">Edit NTP Servers</button>
+                            <div class="toggle-switch-container">
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="direct-mode-toggle" {{ 'checked' if direct_mode else '' }}>
+                                    <span class="toggle-slider"></span>
+                                </label>
+                                <span class="toggle-label">Direct Mode: <span id="direct-mode-status">{{ 'ON' if direct_mode else 'OFF' }}</span></span>
+                                <button id="save-direct-mode" class="btn btn-success">Save Config</button>
+                                <div class="mode-warning">Changes will be applied after system reboot</div>
+                            </div>
+                        </div>
+                        {% if debug_mode %}
+                        <div class="action-row">
+                            <button id="toggle-dangerous" class="btn btn-warning">Show Dangerous Options</button>
+                        </div>
+                        {% endif %}
+                    </div>
+                    
+                    <div id="ntp-sync-result"></div>
+                    
+                    <div id="ntp-servers-editor" class="hidden-panel">
+                        <h3>NTP Servers</h3>
+                        <p>One server per line. Changes will be saved to configuration file.</p>
+                        <textarea id="ntp-servers-list" rows="8">{{ "\n".join(ntp_servers) }}</textarea>
+                        <div class="editor-controls">
+                            <button id="save-ntp-servers" class="btn btn-success">Save to Config</button>
+                            <button id="cancel-ntp-servers" class="btn">Cancel</button>
+                        </div>
+                    </div>
+                    
+                    <div id="reboot-confirm" class="hidden-panel">
+                        <h3>Confirm System Reboot</h3>
+                        <p class="warning-text">Are you sure you want to reboot the Raspberry Pi?</p>
+                        <p>All sensors will be disconnected until the system restarts.</p>
+                        <div class="editor-controls">
+                            <button id="confirm-reboot" class="btn btn-danger">Yes, Reboot Now</button>
+                            <button id="cancel-reboot" class="btn">Cancel</button>
+                        </div>
+                    </div>
+                    
+                    <div id="kill-confirm" class="hidden-panel">
+                        <h3>Confirm Kill Script</h3>
+                        <p class="warning-text">Are you sure you want to kill the timing script?</p>
+                        <p>To start the script again you will need to manually connect to the RPi via SSH:</p>
+                        <pre class="code-block">ssh {{ 'red' if side == 1 else 'blue' }}@{{ 'red' if side == 1 else 'blue' }}</pre>
+                        <div class="editor-controls">
+                            <button id="confirm-kill" class="btn btn-danger">Yes, Kill Script</button>
+                            <button id="cancel-kill" class="btn">Cancel</button>
+                        </div>
+                    </div>
+                    
+                    {% if debug_mode %}
+                    <div id="dangerous-options" class="dangerous-options hidden-panel">
+                        <div class="panel-header">
+                            <div class="dangerous-warning">These options can affect your race timing. Use with caution!</div>
+                            <button id="close-dangerous" class="btn btn-sm">×</button>
+                        </div>
+                        <div class="panel-content">
+                            <a href="/api/trigger_start" class="btn">Trigger Start Event</a>
+                            <a href="/api/trigger_finish" class="btn btn-warning">Trigger Finish Event</a>
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+            
+            <div class="card">
+                <div class="card-header">System Status</div>
+                <div class="card-body">
+                    <div class="system-info">
+                        <div class="info-item">
+                            <div class="info-label">Current Time</div>
+                            <div id="current-time" class="info-value">{{ current_time }}</div>
+                        </div>
+                        <div class="info-item">
+                            <div class="info-label">Track Side</div>
+                            <div class="info-value">
+                                <span class="badge {{ 'badge-red' if side == 1 else 'badge-blue' }}">
+                                    {{ 'RED' if side == 1 else 'BLUE' }}
+                                </span>
+                            </div>
+                        </div>
+                        <div class="info-item">
+                            <div class="info-label">Operation Mode</div>
+                            <div class="info-value">{{ "DIRECT" if direct_mode else "PROXY" }}</div>
+                        </div>
+                        <div class="info-item">
+                            <div class="info-label">Debug Mode</div>
+                            <div class="info-value">{{ "Enabled" if debug_mode else "Disabled" }}</div>
+                        </div>
+                        <div id="ntp-sync-info" class="info-item">
+                            <div class="info-label">Last NTP Sync</div>
+                            <div id="last-ntp-sync-time" class="info-value">{{ last_ntp_sync_time or "Never" }}</div>
+                            <div class="info-label">Server</div>
+                            <div id="last-ntp-sync-server" class="info-value">{{ last_ntp_sync_server or "Unknown" }}</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card">
+                <div class="card-header">System Log</div>
+                <div class="card-body">
+                    <div id="log-container" class="log-container">
+                        {% for log in logs %}
+                            <div class="log-entry
+                                {%- if 'ERROR' in log %} error
+                                {%- elif 'WARNING' in log %} warning
+                                {%- elif 'DEBUG' in log %} debug
+                                {%- else %} info{% endif %}">
+                                {{ log }}
+                            </div>
+                        {% endfor %}
+                    </div>
+                    <div class="log-controls">
+                        <button id="pause-logs" class="btn">Pause Logs</button>
+                        <button id="clear-logs" class="btn">Clear Logs</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Matches Tab -->
+        <div id="matches-tab" class="tab-content">
+            <div class="card">
+                <div class="card-header">Recent Matches</div>
+                <div class="card-body">
+                    <div id="matches-container">
+                        {% if matches %}
+                            {% for match in matches %}
+                            <div class="match-card">
+                                <div class="match-header">
+                                    <div class="match-time">{{ match.match_time }} seconds</div>
+                                    <button class="toggle-details btn-sm">Details</button>
+                                </div>
+                                <div class="match-main-info">
+                                    <div>
+                                        <span class="info-label">Start:</span> 
+                                        <div>{{ match.start_time_formatted }}</div>
+                                        <div class="timestamp-unix">Unix: {{ "%.3f"|format(match.start_time) }}</div>
+                                    </div>
+                                    <div>
+                                        <span class="info-label">Finish:</span> 
+                                        <div>{{ match.finish_time_formatted }}</div>
+                                        <div class="timestamp-unix">Unix: {{ "%.3f"|format(match.finish_time) }}</div>
+                                    </div>
+                                </div>
+                                <div class="match-details hidden">
+                                    <div class="details-section">
+                                        <h4>Start Event</h4>
+                                        <pre class="event-log">{{ match.start_log }}</pre>
+                                        <h4>Server Response</h4>
+                                        <pre class="event-response">{{ match.start_response }}</pre>
+                                    </div>
+                                    <div class="details-section">
+                                        <h4>Finish Event</h4>
+                                        <pre class="event-log">{{ match.finish_log }}</pre>
+                                        <h4>Server Response</h4>
+                                        <pre class="event-response">{{ match.finish_response }}</pre>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        {% else %}
+                            <div class="no-matches">No matches recorded yet.</div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <footer class="footer">
+        <div class="container">
+            Developed with ❤️ by <a href="https://drewnja.xyz" target="_blank">Drewnja</a>
+        </div>
+    </footer>
+</body>
+</html> 
