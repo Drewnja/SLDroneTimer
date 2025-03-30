@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Drone Racing System Monitor</title>
+    <title>{{ '[RED] ' if side == 1 else '[BLUE] ' }}Drone Racing System Monitor</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <link rel="icon" href="{{ url_for('static', filename='favicon.png') }}">
