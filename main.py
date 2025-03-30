@@ -555,16 +555,31 @@ class SensorSystem:
         last_finish_state = True
         
         # Setup non-blocking keyboard input for debug mode
+        has_interactive_terminal = False
         if DEBUG_MODE:
             import termios
             import tty
-            old_settings = termios.tcgetattr(sys.stdin)
+            
+            # Check if running in an interactive terminal
             try:
-                tty.setcbreak(sys.stdin.fileno())
-                logger.info("Debug keyboard input enabled - press S for START, F for FINISH, Q to quit")
+                # Test if we can get terminal attributes - will fail if running as service
+                termios.tcgetattr(sys.stdin)
+                has_interactive_terminal = True
+                
+                # Only setup keyboard input if we have an interactive terminal
+                if has_interactive_terminal:
+                    old_settings = termios.tcgetattr(sys.stdin)
+                    try:
+                        tty.setcbreak(sys.stdin.fileno())
+                        logger.info("Debug keyboard input enabled - press S for START, F for FINISH, Q to quit")
+                    except Exception as e:
+                        logger.warning(f"Could not set terminal to raw mode: {e}")
+                        logger.warning("Debug keyboard input may not work correctly")
+                        has_interactive_terminal = False
             except Exception as e:
-                logger.warning(f"Could not set terminal to raw mode: {e}")
-                logger.warning("Debug keyboard input may not work correctly")
+                logger.warning(f"Running in non-interactive mode (service): {e}")
+                logger.warning("Debug keyboard input disabled")
+                has_interactive_terminal = False
         
         logger.info("Starting main loop...")
         
@@ -574,8 +589,8 @@ class SensorSystem:
                 current_start_state = GPIO.input(START_OPT_PIN)
                 current_finish_state = GPIO.input(FINISH_VIBRO_PIN)
                 
-                # Debug mode - check for keyboard input
-                if DEBUG_MODE:
+                # Debug mode - check for keyboard input only if we have an interactive terminal
+                if DEBUG_MODE and has_interactive_terminal:
                     key = self.check_keyboard_input()
                     if key == 'S':
                         logger.info("DEBUG: Simulating START sensor activation")
@@ -681,7 +696,7 @@ class SensorSystem:
             logger.info("Program terminated by user")
         finally:
             # Restore terminal settings if in debug mode
-            if DEBUG_MODE:
+            if DEBUG_MODE and has_interactive_terminal:
                 try:
                     termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
                 except:
