@@ -37,11 +37,6 @@ DEFAULT_CONFIG = {
         "host": "192.168.1.165",
         "port": 1337,
         "path": "/proxy"
-    },
-    "direct": {
-        "url": "https://external-events.sportlevel.com/api/v1/drone_racing/sensor/action",
-        "station_code": "station_1",
-        "secure_key": "0e9377d685d7e7f2836e53068bf820e6"
     }
 }
 
