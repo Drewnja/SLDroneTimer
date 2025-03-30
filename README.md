@@ -4,6 +4,8 @@
 
 # SL Timer System
 
+A timing system ddesigned to work with https://sportlevel.com/ initialy designed for drone racing, but can be modified to anything.
+
 A Raspberry Pi-based timing system for drone racing competitions that captures start and finish events and sends them to a central server. Features a web interface for configuration and monitoring.
 
 ## Overview
