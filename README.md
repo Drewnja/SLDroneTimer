@@ -159,6 +159,16 @@ The web interface provides:
 - Finish sensor (vibration) connected to GPIO
 - Network connectivity for time synchronization and data transmission
 
+### GPIO Connection Instructions
+
+Connect your hardware components to the Raspberry Pi as follows:
+
+- Connect your start optical sensor between GPIO17 and GND
+- Connect your finish vibration sensor between GPIO27 and GND
+- Connect LEDs with appropriate resistors to GPIO22, GPIO23, and GPIO24
+
+![GPIO Pinout](https://www.raspberrypi.com/documentation/computers/images/GPIO-Pinout-Diagram-2.png)
+
 ## Security Note
 
 The `config.json` file contains sensitive information like API keys and is excluded from git by `.gitignore`. Never commit your actual configuration to a public repository. 
