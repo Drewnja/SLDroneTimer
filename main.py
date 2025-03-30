@@ -203,6 +203,8 @@ class SensorSystem:
             logger.info("Press 'F' to simulate FINISH sensor")
             logger.info("Press 'Q' to quit")
         
+        # Test connectivity, but don't exit on failure
+        connection_success = True
         # If not using direct mode, test proxy server connectivity
         if not DIRECT_MODE:
             # Test network connectivity
@@ -218,7 +220,9 @@ class SensorSystem:
                 logger.error("2. IP address configuration")
                 logger.error("3. Gateway and DNS settings")
                 logger.error("4. Proxy server is running")
+                logger.warning("Will continue running, but server connection is not available at the moment.")
                 self.blink_start_led(5, 0.2)  # Blink 5 times to indicate error
+                connection_success = False
         else:
             logger.info("=== DIRECT MODE ACTIVE ===")
             logger.info(f"Sending requests directly to: {DIRECT_SERVER_URL}")
@@ -246,8 +250,10 @@ class SensorSystem:
                 logger.warning(f"Warning: Could not connect to direct server: {e}")
                 logger.warning("Will still attempt to send events when triggered")
                 self.blink_start_led(5, 0.2)  # Blink 5 times to indicate error
+                connection_success = False
         
         # Test NTP synchronization
+        ntp_success = True
         logger.info("Initializing NTP client...")
         try:
             ntp_response = self.try_ntp_sync()
@@ -256,8 +262,14 @@ class SensorSystem:
             logger.error(f"Failed to synchronize NTP time! Error: {e}")
             logger.warning("System will proceed but may have less accurate timing.")
             self.error_blink_pattern(3)  # Show error but continue
+            ntp_success = False
         
-        logger.info("=== Setup Complete ===")
+        # Log overall status, but never exit
+        if connection_success and ntp_success:
+            logger.info("=== Setup Complete Successfully ===")
+        else:
+            logger.warning("=== Setup Complete with Warnings ===")
+            logger.warning("Some services are not available, but system will continue to function.")
     
     def get_current_time(self):
         """Get current time from NTP server with millisecond precision"""
