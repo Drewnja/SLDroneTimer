@@ -36,7 +36,7 @@ sudo apt install python3 python3-pip python3-venv
 
 ```bash
 # Clone the repository
-git clone https://github.com/YourUsername/SLDroneTimer.git
+git clone https://github.com/Drewnja/SLDroneTimer.git
 cd SLDroneTimer
 
 # Create a virtual environment
