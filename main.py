@@ -314,14 +314,7 @@ class SensorSystem:
             logger.error("Invalid timestamp (before 2001)!")
             return False
         
-        # Force NTP update before sending to ensure time is current
-        try:
-            # Try to refresh NTP time from any available server
-            ntp_response = self.try_ntp_sync()
-            logger.info("NTP time refreshed before sending request")
-        except Exception as e:
-            logger.warning(f"Could not refresh NTP time: {e}")
-            # Continue anyway with the already recorded timestamp
+        # NTP sync before sending request removed as requested
         
         if DIRECT_MODE:
             return self.send_direct_request(side, event_type, event_time)
@@ -658,14 +651,16 @@ class SensorSystem:
                     GPIO.output(LED_FINISH_PIN, GPIO.HIGH)
                     GPIO.output(LED_FINISH2_PIN, GPIO.LOW)
                     
-                    # Force NTP update after landing before sending the request
-                    try:
-                        ntp_response = self.try_ntp_sync()
-                        logger.info("NTP time updated after landing")
-                    except Exception as e:
-                        logger.warning(f"Could not update NTP time after landing: {e}")
+                    # NTP sync before sending request removed as requested
                     
                     success = self.send_post_request_landing(SIDE, event_time)
+                    
+                    # Force NTP update AFTER landing event is processed
+                    try:
+                        ntp_response = self.try_ntp_sync()
+                        logger.info("NTP time updated after landing event processing")
+                    except Exception as e:
+                        logger.warning(f"Could not update NTP time after landing event: {e}")
                     
                     if success:
                         logger.info("Landing event successfully processed")
