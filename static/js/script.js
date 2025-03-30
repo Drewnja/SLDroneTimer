@@ -27,6 +27,9 @@ function initPage() {
     // Set up match detail toggles if on matches tab
     setupMatchDetailToggles();
     
+    // Set up clear matches functionality
+    setupClearMatches();
+    
     // System buttons event listeners
     const ntpForm = document.getElementById('ntp-sync-form');
     const syncNtpButton = document.getElementById('sync-ntp');
@@ -170,7 +173,8 @@ function hideAllPanels(exceptPanels = []) {
         'ntp-servers-editor',
         'reboot-confirm',
         'kill-confirm',
-        'dangerous-options'
+        'dangerous-options',
+        'clear-matches-confirm'
     ];
     
     // Hide all panels except the ones specified
@@ -587,5 +591,63 @@ function saveDirectModeSettings() {
         resultElement.style.display = 'block';
         resultElement.className = 'error-message';
         resultElement.innerHTML = `Request failed: ${error}`;
+    });
+}
+
+function setupClearMatches() {
+    // Add clear matches button listener
+    const clearMatches = document.getElementById('clear-matches');
+    if (clearMatches) {
+        clearMatches.addEventListener('click', function() {
+            document.getElementById('clear-matches-confirm').style.display = 'block';
+            hideAllPanels(['clear-matches-confirm']);
+        });
+    }
+    
+    // Add clear matches confirmation listeners
+    const confirmClearMatches = document.getElementById('confirm-clear-matches');
+    if (confirmClearMatches) {
+        confirmClearMatches.addEventListener('click', clearMatchHistory);
+    }
+    
+    const cancelClearMatches = document.getElementById('cancel-clear-matches');
+    if (cancelClearMatches) {
+        cancelClearMatches.addEventListener('click', function() {
+            document.getElementById('clear-matches-confirm').style.display = 'none';
+        });
+    }
+}
+
+function clearMatchHistory() {
+    // Hide the confirmation dialog
+    document.getElementById('clear-matches-confirm').style.display = 'none';
+    
+    // Show temporary message
+    const matchesContainer = document.getElementById('matches-container');
+    if (matchesContainer) {
+        matchesContainer.innerHTML = '<div class="processing-message">Clearing match history...</div>';
+    }
+    
+    fetch('/api/clear_matches', {
+        method: 'POST'
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Show success message
+            matchesContainer.innerHTML = '<div class="no-matches">Match history cleared successfully.</div>';
+            
+            // Auto-refresh after 2 seconds to show empty state
+            setTimeout(() => {
+                location.reload();
+            }, 2000);
+        } else {
+            // Show error
+            matchesContainer.innerHTML = `<div class="error-message">Failed to clear match history: ${data.error}</div>`;
+        }
+    })
+    .catch(error => {
+        // Show error
+        matchesContainer.innerHTML = `<div class="error-message">Request failed: ${error}</div>`;
     });
 } 

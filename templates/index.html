@@ -172,7 +172,10 @@
         <!-- Matches Tab -->
         <div id="matches-tab" class="tab-content">
             <div class="card">
-                <div class="card-header">Recent Matches</div>
+                <div class="card-header">
+                    Recent Matches
+                    <button id="clear-matches" class="btn btn-danger">Clear Match History</button>
+                </div>
                 <div class="card-body">
                     <div id="matches-container">
                         {% if matches %}
@@ -214,6 +217,17 @@
                             <div class="no-matches">No matches recorded yet.</div>
                         {% endif %}
                     </div>
+                </div>
+            </div>
+            
+            <!-- Clear Matches Confirmation Dialog -->
+            <div id="clear-matches-confirm" class="hidden-panel">
+                <h3>Confirm Clear Match History</h3>
+                <p class="warning-text">Are you sure you want to clear all match history?</p>
+                <p>This action cannot be undone. All match records will be permanently deleted.</p>
+                <div class="editor-controls">
+                    <button id="confirm-clear-matches" class="btn btn-danger">Yes, Clear All Matches</button>
+                    <button id="cancel-clear-matches" class="btn">Cancel</button>
                 </div>
             </div>
         </div>

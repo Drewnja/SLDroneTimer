@@ -215,6 +215,35 @@ def get_matches():
             pass
         return []
 
+def clear_matches():
+    """Clear all matches from the database"""
+    try:
+        # Check if database exists
+        if not os.path.exists(DB_PATH):
+            logger.warning("Database not found, nothing to clear")
+            return True
+            
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        
+        # Check if table exists
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='matches'")
+        if not cursor.fetchone():
+            logger.warning("Matches table doesn't exist, nothing to clear")
+            conn.close()
+            return True
+        
+        # Delete all matches
+        cursor.execute('DELETE FROM matches')
+        conn.commit()
+        conn.close()
+        
+        logger.info("Match history cleared successfully")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to clear matches: {e}")
+        return False
+
 def initialize_web_server(sensor_system_instance):
     """Initialize the web server with a reference to the sensor system"""
     global sensor_system
@@ -300,6 +329,15 @@ def get_matches_endpoint():
     """API endpoint to get matches"""
     matches = get_matches()
     return jsonify(matches)
+
+@app.route('/api/clear_matches', methods=['POST'])
+def clear_matches_endpoint():
+    """API endpoint to clear all matches from the database"""
+    success = clear_matches()
+    if success:
+        return jsonify({"success": True, "message": "Match history cleared successfully"})
+    else:
+        return jsonify({"success": False, "error": "Failed to clear match history"})
 
 @app.route('/api/trigger_start')
 def trigger_start_endpoint():
