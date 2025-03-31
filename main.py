@@ -585,10 +585,6 @@ class SensorSystem:
                 current_start_state = GPIO.input(START_OPT_PIN)
                 current_finish_state = GPIO.input(FINISH_VIBRO_PIN)
                 
-                # Log sensor states periodically (every 5 seconds) to monitor their status
-                if int(time.time()) % 5 == 0:
-                    logger.info(f"Current sensor states - Start: {'INACTIVE' if current_start_state else 'ACTIVE'}, Finish: {'INACTIVE' if current_finish_state else 'ACTIVE'}")
-                
                 # Debug mode - check for keyboard input only if we have an interactive terminal
                 if DEBUG_MODE and has_interactive_terminal:
                     key = self.check_keyboard_input()
