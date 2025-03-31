@@ -186,7 +186,7 @@ class SensorSystem:
         
         # Setup pins
         GPIO.setup(START_OPT_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)  # Pulled up, active low
-        GPIO.setup(FINISH_VIBRO_PIN, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)  # Pulled down, active high
+        GPIO.setup(FINISH_VIBRO_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)  # Pulled up, active low
         GPIO.setup(LED_START_PIN, GPIO.OUT)
         GPIO.setup(LED_FINISH_PIN, GPIO.OUT)
         GPIO.setup(LED_FINISH2_PIN, GPIO.OUT)
@@ -647,13 +647,13 @@ class SensorSystem:
                 
                 # Check finish sensor state changes
                 if current_finish_state != last_finish_state:
-                    logger.info(f"Finish sensor state changed to: {'ACTIVE' if current_finish_state else 'INACTIVE'}")
+                    logger.info(f"Finish sensor state changed to: {'INACTIVE' if current_finish_state else 'ACTIVE'}")
                     logger.info(f"Finish sensor GPIO pin {FINISH_VIBRO_PIN} value: {current_finish_state}")
                     logger.info(f"Start sensor state when finish changed: {'INACTIVE' if current_start_state else 'ACTIVE'}")
                     last_finish_state = current_finish_state
                 
-                # Finish sensor logic (now active high)
-                if current_finish_state and current_start_state:
+                # Finish sensor logic (active low, like start sensor)
+                if not current_finish_state and current_start_state:  # Both sensors are active LOW
                     logger.info("Triggering landing event")
                     logger.info(f"Finish sensor GPIO pin {FINISH_VIBRO_PIN} value: {current_finish_state}")
                     logger.info(f"Start sensor GPIO pin {START_OPT_PIN} value: {current_start_state}")
