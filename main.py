@@ -186,7 +186,7 @@ class SensorSystem:
         
         # Setup pins
         GPIO.setup(START_OPT_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)  # Pulled up, active low
-        GPIO.setup(FINISH_VIBRO_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)  # Pulled up, active low
+        GPIO.setup(FINISH_VIBRO_PIN, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)  # Pulled down, active high
         GPIO.setup(LED_START_PIN, GPIO.OUT)
         GPIO.setup(LED_FINISH_PIN, GPIO.OUT)
         GPIO.setup(LED_FINISH2_PIN, GPIO.OUT)
@@ -585,6 +585,10 @@ class SensorSystem:
                 current_start_state = GPIO.input(START_OPT_PIN)
                 current_finish_state = GPIO.input(FINISH_VIBRO_PIN)
                 
+                # Log sensor states periodically (every 5 seconds) to monitor their status
+                if int(time.time()) % 5 == 0:
+                    logger.info(f"Current sensor states - Start: {'INACTIVE' if current_start_state else 'ACTIVE'}, Finish: {'INACTIVE' if current_finish_state else 'ACTIVE'}")
+                
                 # Debug mode - check for keyboard input only if we have an interactive terminal
                 if DEBUG_MODE and has_interactive_terminal:
                     key = self.check_keyboard_input()
@@ -609,6 +613,7 @@ class SensorSystem:
                 # Check start optical sensor state changes
                 if current_start_state != last_start_state:
                     logger.info(f"Start sensor state changed to: {'INACTIVE' if current_start_state else 'ACTIVE'}")
+                    logger.info(f"Start sensor GPIO pin {START_OPT_PIN} value: {current_start_state}")
                     
                     if not current_start_state:  # Sensor became active (pulled low)
                         self.start_sensor_active_time = time.time()
@@ -642,12 +647,16 @@ class SensorSystem:
                 
                 # Check finish sensor state changes
                 if current_finish_state != last_finish_state:
-                    logger.info(f"Finish sensor state changed to: {'INACTIVE' if current_finish_state else 'ACTIVE'}")
+                    logger.info(f"Finish sensor state changed to: {'ACTIVE' if current_finish_state else 'INACTIVE'}")
+                    logger.info(f"Finish sensor GPIO pin {FINISH_VIBRO_PIN} value: {current_finish_state}")
+                    logger.info(f"Start sensor state when finish changed: {'INACTIVE' if current_start_state else 'ACTIVE'}")
                     last_finish_state = current_finish_state
                 
-                # Finish sensor logic
-                if not current_finish_state and current_start_state:
+                # Finish sensor logic (now active high)
+                if current_finish_state and current_start_state:
                     logger.info("Triggering landing event")
+                    logger.info(f"Finish sensor GPIO pin {FINISH_VIBRO_PIN} value: {current_finish_state}")
+                    logger.info(f"Start sensor GPIO pin {START_OPT_PIN} value: {current_start_state}")
                     
                     # Record timestamp immediately when the event is triggered
                     # Use system time directly instead of get_current_time to avoid NTP sync
