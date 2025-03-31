@@ -65,13 +65,27 @@ h4 {
 }
 .card-header {
     background-color: #2c3e50;
-    color: white;
-    padding: 15px 20px;
+    color: #ecf0f1;
+    padding: 15px;
+    border-top-left-radius: 8px;
+    border-top-right-radius: 8px;
     font-weight: bold;
-    border-bottom: 1px solid #ddd;
+    font-size: 1.2em;
     display: flex;
     justify-content: space-between;
     align-items: center;
+}
+.card-header .header-actions {
+    display: flex;
+    gap: 10px;
+}
+.card-header .header-actions .btn {
+    font-size: 14px;
+    padding: 8px 15px;
+}
+.card-header .header-actions a.btn {
+    text-decoration: none;
+    display: inline-block;
 }
 .card-body {
     padding: 25px;

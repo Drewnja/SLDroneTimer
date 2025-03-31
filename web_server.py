@@ -355,6 +355,25 @@ def trigger_finish_endpoint():
         sensor_system.trigger_finish_event()
     return redirect('/')
 
+@app.route('/api/export_database')
+def export_database():
+    """API endpoint to download the matches database file"""
+    try:
+        if os.path.exists(DB_PATH):
+            return Response(
+                open(DB_PATH, 'rb').read(),
+                mimetype='application/x-sqlite3',
+                headers={
+                    'Content-Disposition': 'attachment; filename=matches.db',
+                    'Content-Type': 'application/x-sqlite3'
+                }
+            )
+        else:
+            return jsonify({"error": "Database file not found"}), 404
+    except Exception as e:
+        logger.error(f"Failed to export database: {e}")
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/api/log_stream')
 def log_stream():
     """Server-sent event stream for logs"""

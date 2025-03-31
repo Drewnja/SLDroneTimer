@@ -186,7 +186,10 @@
             <div class="card">
                 <div class="card-header">
                     Recent Matches
-                    <button id="clear-matches" class="btn btn-danger">Clear Match History</button>
+                    <div class="header-actions">
+                        <a href="/api/export_database" class="btn btn-primary" download>Export Database</a>
+                        <button id="clear-matches" class="btn btn-danger">Clear Match History</button>
+                    </div>
                 </div>
                 <div class="card-body">
                     <div id="matches-container">
