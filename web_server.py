@@ -7,12 +7,14 @@ import os
 import sqlite3
 import subprocess
 from datetime import datetime
-from flask import Flask, render_template, jsonify, request, redirect, Response
+from flask import Flask, render_template, jsonify, request, redirect, Response, session, url_for
 import threading
 from collections import deque
+from functools import wraps
 
 # Create Flask app
 app = Flask(__name__)
+app.secret_key = os.urandom(24)  # Generate a random secret key for sessions
 
 # Global variables
 log_queue = queue.Queue(maxsize=1000)  # Store the last 1000 log entries
@@ -26,6 +28,10 @@ CONFIG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.j
 # Default configuration
 DEFAULT_CONFIG = {
     "direct_mode": False,
+    "auth": {
+        "username": "admin",
+        "password": "admin"
+    },
     "ntp_servers": [
         "pool.ntp.org",
         "time.google.com",
@@ -38,6 +44,40 @@ DEFAULT_CONFIG = {
         "north-america.pool.ntp.org"
     ]
 }
+
+# Login decorator
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'logged_in' not in session:
+            return redirect(url_for('login'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    """Handle login page and authentication"""
+    error = None
+    config = load_config()
+    
+    if request.method == 'POST':
+        username = request.form['username']
+        password = request.form['password']
+        
+        if (username == config['auth']['username'] and 
+            password == config['auth']['password']):
+            session['logged_in'] = True
+            return redirect(url_for('index'))
+        else:
+            error = 'Invalid credentials'
+    
+    return render_template('login.html', error=error)
+
+@app.route('/logout')
+def logout():
+    """Handle logout"""
+    session.pop('logged_in', None)
+    return redirect(url_for('login'))
 
 # Setup logging
 class QueueHandler(logging.Handler):
@@ -270,6 +310,7 @@ def initialize_web_server(sensor_system_instance):
     logger.info("Web server initialized with sensor system reference")
 
 @app.route('/')
+@login_required
 def index():
     """Main web interface"""
     # Get latest matches for the Matches tab
@@ -289,6 +330,7 @@ def index():
     )
 
 @app.route('/api/system_info')
+@login_required
 def system_info():
     """API endpoint to get system information"""
     return jsonify({
@@ -301,6 +343,7 @@ def system_info():
     })
 
 @app.route('/api/trigger_ntp_sync', methods=['POST'])
+@login_required
 def trigger_ntp_sync_endpoint():
     """API endpoint to trigger NTP synchronization"""
     global last_ntp_sync_time, last_ntp_sync_server
@@ -325,12 +368,14 @@ def trigger_ntp_sync_endpoint():
         })
 
 @app.route('/api/matches')
+@login_required
 def get_matches_endpoint():
     """API endpoint to get matches"""
     matches = get_matches()
     return jsonify(matches)
 
 @app.route('/api/clear_matches', methods=['POST'])
+@login_required
 def clear_matches_endpoint():
     """API endpoint to clear all matches from the database"""
     success = clear_matches()
@@ -340,6 +385,7 @@ def clear_matches_endpoint():
         return jsonify({"success": False, "error": "Failed to clear match history"})
 
 @app.route('/api/trigger_start')
+@login_required
 def trigger_start_endpoint():
     """API endpoint to trigger a start event"""
     if sensor_system.DEBUG_MODE:
@@ -348,6 +394,7 @@ def trigger_start_endpoint():
     return redirect('/')
 
 @app.route('/api/trigger_finish')
+@login_required
 def trigger_finish_endpoint():
     """API endpoint to trigger a finish event"""
     if sensor_system.DEBUG_MODE:
@@ -356,6 +403,7 @@ def trigger_finish_endpoint():
     return redirect('/')
 
 @app.route('/api/export_database')
+@login_required
 def export_database():
     """API endpoint to download the matches database file"""
     try:
@@ -375,6 +423,7 @@ def export_database():
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/log_stream')
+@login_required
 def log_stream():
     """Server-sent event stream for logs"""
     def generate():
@@ -395,6 +444,7 @@ def log_stream():
     return Response(generate(), mimetype='text/event-stream')
 
 @app.route('/api/update_ntp_servers', methods=['POST'])
+@login_required
 def update_ntp_servers():
     """API endpoint to update the list of NTP servers and save to config"""
     try:
@@ -427,6 +477,7 @@ def update_ntp_servers():
         return jsonify({"success": False, "error": str(e)})
 
 @app.route('/api/reboot_system', methods=['POST'])
+@login_required
 def reboot_system():
     """API endpoint to reboot the Raspberry Pi"""
     try:
@@ -445,6 +496,7 @@ def reboot_system():
         return jsonify({"success": False, "error": str(e)})
 
 @app.route('/api/kill_script', methods=['POST'])
+@login_required
 def kill_script():
     """API endpoint to kill the main script process"""
     try:
@@ -469,6 +521,7 @@ def kill_script():
         return jsonify({"success": False, "error": str(e)})
 
 @app.route('/api/shutdown_system', methods=['POST'])
+@login_required
 def shutdown_system():
     """API endpoint to safely shut down the Raspberry Pi"""
     try:
@@ -487,6 +540,7 @@ def shutdown_system():
         return jsonify({"success": False, "error": str(e)})
 
 @app.route('/api/save_direct_mode', methods=['POST'])
+@login_required
 def save_direct_mode():
     """API endpoint to save direct mode setting to config file"""
     try:

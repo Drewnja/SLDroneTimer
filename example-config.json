@@ -1,6 +1,10 @@
 {
     "direct_mode": false,
     "side": 1,
+    "auth": {
+        "username": "admin",
+        "password": "admin"
+    },
     "ntp_servers": [
         "pool.ntp.org",
         "time.google.com",
