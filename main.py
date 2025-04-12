@@ -22,6 +22,14 @@ CONFIG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.j
 DEFAULT_CONFIG = {
     "direct_mode": False,
     "side": 1,  # Default to RED TRACK
+    "auth": {
+        "username": "admin",
+        "password": "admin"
+    },
+    "log_server": {
+        "host": "localhost",
+        "port": 8000
+    },
     "ntp_servers": [
         "pool.ntp.org",
         "time.google.com",
@@ -91,6 +99,11 @@ DIRECT_SERVER_URL = direct_config.get("url", DEFAULT_CONFIG["direct"]["url"])
 STATION_CODE = direct_config.get("station_code", DEFAULT_CONFIG["direct"]["station_code"])
 SECURE_KEY = direct_config.get("secure_key", DEFAULT_CONFIG["direct"]["secure_key"])
 
+# Log server settings
+log_server_config = config.get("log_server", DEFAULT_CONFIG["log_server"])
+LOG_SERVER_HOST = log_server_config.get("host", DEFAULT_CONFIG["log_server"]["host"])
+LOG_SERVER_PORT = log_server_config.get("port", DEFAULT_CONFIG["log_server"]["port"])
+
 # Pin definitions (BCM mode)
 START_OPT_PIN = 17  # Adjust as needed for your RPi connections
 FINISH_VIBRO_PIN = 27  # Adjust as needed for your RPi connections
@@ -120,17 +133,31 @@ class SensorSystem:
     """Main sensor system class that encapsulates all functionality"""
     
     def __init__(self):
-        # Reference class attributes to module constants for web server access
+        # Load configuration first
+        self.config = load_config()
+        
+        # Reference class attributes to module constants/config for web server access
         self.DEBUG_MODE = DEBUG_MODE
-        self.DIRECT_MODE = DIRECT_MODE
-        self.SIDE = SIDE
-        self.NTP_SERVERS = NTP_SERVERS
-        self.STATION_CODE = STATION_CODE
-        self.SECURE_KEY = SECURE_KEY
-        self.SERVER_HOST = SERVER_HOST
-        self.SERVER_PORT = SERVER_PORT
-        self.SERVER_PATH = SERVER_PATH
-        self.DIRECT_SERVER_URL = DIRECT_SERVER_URL
+        self.DIRECT_MODE = self.config.get("direct_mode", DEFAULT_CONFIG["direct_mode"])
+        self.SIDE = self.config.get("side", DEFAULT_CONFIG["side"])
+        self.NTP_SERVERS = self.config.get("ntp_servers", DEFAULT_CONFIG["ntp_servers"])
+        
+        # Proxy settings
+        proxy_config = self.config.get("proxy", DEFAULT_CONFIG["proxy"])
+        self.SERVER_HOST = proxy_config.get("host", DEFAULT_CONFIG["proxy"]["host"])
+        self.SERVER_PORT = proxy_config.get("port", DEFAULT_CONFIG["proxy"]["port"])
+        self.SERVER_PATH = proxy_config.get("path", DEFAULT_CONFIG["proxy"]["path"])
+        
+        # Direct settings
+        direct_config = self.config.get("direct", DEFAULT_CONFIG["direct"])
+        self.DIRECT_SERVER_URL = direct_config.get("url", DEFAULT_CONFIG["direct"]["url"])
+        self.STATION_CODE = direct_config.get("station_code", DEFAULT_CONFIG["direct"]["station_code"])
+        self.SECURE_KEY = direct_config.get("secure_key", DEFAULT_CONFIG["direct"]["secure_key"])
+
+        # Log server settings
+        log_server_config = self.config.get("log_server", DEFAULT_CONFIG["log_server"])
+        self.LOG_SERVER_HOST = log_server_config.get("host", DEFAULT_CONFIG["log_server"]["host"])
+        self.LOG_SERVER_PORT = log_server_config.get("port", DEFAULT_CONFIG["log_server"]["port"])
         
         # State variables
         self.ff = False
@@ -206,11 +233,11 @@ class SensorSystem:
         # Test connectivity, but don't exit on failure
         connection_success = True
         # If not using direct mode, test proxy server connectivity
-        if not DIRECT_MODE:
+        if not self.DIRECT_MODE:
             # Test network connectivity
             logger.info("Testing network connectivity to proxy server...")
             try:
-                socket.create_connection((SERVER_HOST, SERVER_PORT), timeout=5)
+                socket.create_connection((self.SERVER_HOST, self.SERVER_PORT), timeout=5)
                 logger.info("Successfully connected to proxy server!")
                 self.blink_start_led(3, 0.3)  # Blink 3 times to indicate success
             except Exception as e:
@@ -225,21 +252,21 @@ class SensorSystem:
                 connection_success = False
         else:
             logger.info("=== DIRECT MODE ACTIVE ===")
-            logger.info(f"Sending requests directly to: {DIRECT_SERVER_URL}")
+            logger.info(f"Sending requests directly to: {self.DIRECT_SERVER_URL}")
             logger.info("Testing direct server connectivity...")
             try:
                 # Use POST instead of GET and enable SSL verification
                 test_data = {
-                    "station_code": STATION_CODE,
-                    "secure_key": SECURE_KEY,
+                    "station_code": self.STATION_CODE,
+                    "secure_key": self.SECURE_KEY,
                     "event_type": "test",
                     "event_body": {
-                        "side": SIDE,
+                        "side": self.SIDE,
                         "time": time.time()
                     }
                 }
                 response = requests.post(
-                    DIRECT_SERVER_URL,
+                    self.DIRECT_SERVER_URL,
                     json=test_data,
                     timeout=5
                 )
@@ -299,6 +326,36 @@ class SensorSystem:
             GPIO.output(LED_START_PIN, GPIO.LOW)
             time.sleep(delay_sec)
     
+    def send_log_request(self, event_type, event_time):
+        """Send event data to the local log server"""
+        try:
+            if not self.LOG_SERVER_HOST or not self.LOG_SERVER_PORT:
+                logger.info("Log server not configured, skipping log request.")
+                return
+
+            # Determine endpoint based on side
+            endpoint = f"/send{self.SIDE}"
+            url = f"http://{self.LOG_SERVER_HOST}:{self.LOG_SERVER_PORT}{endpoint}"
+            
+            # Prepare JSON data
+            log_data = {
+                "type": event_type, 
+                "timestamp": round(event_time, 3)
+            }
+            
+            logger.info(f"Sending log data to {url}: {json.dumps(log_data)}")
+            
+            response = requests.post(url, json=log_data, timeout=2)
+            
+            if response.status_code == 200:
+                logger.info("Log request successful.")
+            else:
+                logger.warning(f"Log request failed! Status: {response.status_code}, Body: {response.text}")
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Failed to send log request: {e}")
+        except Exception as e:
+            logger.error(f"An unexpected error occurred while sending log request: {e}")
+
     def send_post_request(self, side, event_type, event_time):
         """Send POST request to the server"""
         logger.info("=== Sending POST Request ===")
@@ -310,7 +367,7 @@ class SensorSystem:
         
         # NTP sync before sending request removed as requested
         
-        if DIRECT_MODE:
+        if self.DIRECT_MODE:
             return self.send_direct_request(side, event_type, event_time)
         else:
             return self.send_proxy_request(side, event_type, event_time)
@@ -319,8 +376,8 @@ class SensorSystem:
         """Send request through proxy server"""
         # Prepare JSON data
         json_data = {
-            "station_code": STATION_CODE,
-            "secure_key": SECURE_KEY,
+            "station_code": self.STATION_CODE,
+            "secure_key": self.SECURE_KEY,
             "event_type": event_type,
             "event_body": {
                 "side": side,
@@ -336,7 +393,7 @@ class SensorSystem:
                 time.sleep(1)  # Delay between retries
             
             try:
-                url = f"http://{SERVER_HOST}:{SERVER_PORT}{SERVER_PATH}"
+                url = f"http://{self.SERVER_HOST}:{self.SERVER_PORT}{self.SERVER_PATH}"
                 logger.info("Connecting to proxy server...")
                 logger.info(f"Sending data: {json.dumps(json_data)}")
                 
@@ -377,8 +434,8 @@ class SensorSystem:
         
         # Prepare JSON data
         json_data = {
-            "station_code": STATION_CODE,
-            "secure_key": SECURE_KEY,
+            "station_code": self.STATION_CODE,
+            "secure_key": self.SECURE_KEY,
             "event_type": event_type,
             "event_body": {
                 "side": side,
@@ -397,7 +454,7 @@ class SensorSystem:
                 logger.info(f"Sending data: {json.dumps(json_data)}")
                 
                 response = requests.post(
-                    DIRECT_SERVER_URL,
+                    self.DIRECT_SERVER_URL,
                     json=json_data,
                     timeout=5  # 5 seconds timeout
                 )
@@ -433,11 +490,14 @@ class SensorSystem:
         start_log = f"Starting take-off event at {datetime.fromtimestamp(event_time).strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]}, side: {side}"
         logger.info(start_log)
         
-        # Send request and get result
+        # Send primary request and get result
         success = self.send_post_request(side, "take_off", event_time)
         
         # Get the response data (will be added in send_post_request)
         response_data = getattr(self, "last_response_data", "No response data")
+        
+        # Send log request regardless of primary request success
+        self.send_log_request("take_off", event_time)
         
         # Store match start data regardless of request success
         self.current_match = {
@@ -460,11 +520,14 @@ class SensorSystem:
         finish_log = f"Landing event at {datetime.fromtimestamp(event_time).strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]}, side: {side}"
         logger.info(finish_log)
         
-        # Send request and get result
+        # Send primary request and get result
         success = self.send_post_request(side, "landing", event_time)
         
         # Get the response data regardless of success
         response_data = getattr(self, "last_response_data", "No response data")
+        
+        # Send log request regardless of primary request success
+        self.send_log_request("landing", event_time)
         
         # If we have a match in progress, complete it regardless of request success
         if self.current_match["in_progress"]:
@@ -505,7 +568,7 @@ class SensorSystem:
     
     def check_keyboard_input(self):
         """Check for keyboard input in non-blocking mode"""
-        if not DEBUG_MODE:
+        if not self.DEBUG_MODE:
             return None
             
         if select.select([sys.stdin], [], [], 0.0)[0]:
@@ -518,14 +581,14 @@ class SensorSystem:
         logger.info("DEBUG: Triggering start event immediately")
         # Use system time directly instead of get_current_time to avoid NTP sync
         event_time = time.time()
-        self.send_post_request_take_off(SIDE, event_time)
+        self.send_post_request_take_off(self.SIDE, event_time)
     
     def trigger_finish_event(self):
         """Trigger the finish event directly (used in debug mode)"""
         logger.info("DEBUG: Triggering finish event immediately")
         # Use system time directly instead of get_current_time to avoid NTP sync
         event_time = time.time()
-        success = self.send_post_request_landing(SIDE, event_time)
+        success = self.send_post_request_landing(self.SIDE, event_time)
         
         # Force NTP update AFTER landing event is processed (same as in main loop)
         try:
@@ -552,7 +615,7 @@ class SensorSystem:
         
         # Setup non-blocking keyboard input for debug mode
         has_interactive_terminal = False
-        if DEBUG_MODE:
+        if self.DEBUG_MODE:
             import termios
             import tty
             
@@ -586,7 +649,7 @@ class SensorSystem:
                 current_finish_state = GPIO.input(FINISH_VIBRO_PIN)
                 
                 # Debug mode - check for keyboard input only if we have an interactive terminal
-                if DEBUG_MODE and has_interactive_terminal:
+                if self.DEBUG_MODE and has_interactive_terminal:
                     key = self.check_keyboard_input()
                     if key == 'S':
                         logger.info("DEBUG: Simulating START sensor activation")
@@ -622,7 +685,7 @@ class SensorSystem:
                             logger.info("Triggering take-off event")
                             # Use system time directly instead of get_current_time to avoid NTP sync
                             event_time = time.time()
-                            self.send_post_request_take_off(SIDE, event_time)
+                            self.send_post_request_take_off(self.SIDE, event_time)
                         
                         self.ff = False
                         self.start_activated = False
@@ -663,7 +726,7 @@ class SensorSystem:
                     
                     # NTP sync before sending request removed as requested
                     
-                    success = self.send_post_request_landing(SIDE, event_time)
+                    success = self.send_post_request_landing(self.SIDE, event_time)
                     
                     # Force NTP update AFTER landing event is processed
                     try:
@@ -701,7 +764,7 @@ class SensorSystem:
             logger.info("Program terminated by user")
         finally:
             # Restore terminal settings if in debug mode
-            if DEBUG_MODE and has_interactive_terminal:
+            if self.DEBUG_MODE and has_interactive_terminal:
                 try:
                     termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
                 except:

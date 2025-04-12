@@ -172,3 +172,56 @@ Connect your hardware components to the Raspberry Pi as follows:
 ## Security Note
 
 The `config.json` file contains sensitive information like API keys and is excluded from git by `.gitignore`. Never commit your actual configuration to a public repository. 
+
+## Local Log Server Integration
+
+The system can be configured to send event data (takeoff and landing) to a local HTTP server for additional logging or processing.
+
+### Configuration
+
+Add the following section to your `config.json`:
+
+```json
+"log_server": {
+    "host": "your-log-server-ip",
+    "port": 8000
+}
+```
+
+- `host`: The IP address or hostname of your local log server.
+- `port`: The port number your log server is listening on.
+
+If the `log_server` section is not present or the `host`/`port` are empty, this feature will be disabled.
+
+### Data Transmission
+
+After each `take_off` or `landing` event is processed (regardless of whether the primary request to the proxy/direct server was successful), the SL Timer will send a `POST` request to your configured log server.
+
+- **Endpoint**: 
+    - If `side` is `1` (RED TRACK): `http://{host}:{port}/send1`
+    - If `side` is `2` (BLUE TRACK): `http://{host}:{port}/send2`
+- **Method**: `POST`
+- **Content-Type**: `application/json`
+- **Body**: A JSON object containing:
+    - `type`: The event type (`"take_off"` or `"landing"`).
+    - `timestamp`: The Unix timestamp (float, with millisecond precision) of the event.
+
+### Example Request Body
+
+```json
+{
+    "type": "take_off",
+    "timestamp": 1678886461.123
+}
+```
+
+```json
+{
+    "type": "landing",
+    "timestamp": 1678886522.456
+}
+```
+
+### Expected Server Response
+
+The SL Timer expects an HTTP `200 OK` response from the log server upon successful receipt of the data. Other status codes will be logged as warnings. 

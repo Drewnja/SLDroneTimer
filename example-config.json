@@ -5,6 +5,10 @@
         "username": "admin",
         "password": "admin"
     },
+    "log_server": {
+        "host": "localhost",
+        "port": 8000
+    },
     "ntp_servers": [
         "pool.ntp.org",
         "time.google.com",
