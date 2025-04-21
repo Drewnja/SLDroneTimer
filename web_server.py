@@ -544,27 +544,80 @@ def shutdown_system():
 def save_direct_mode():
     """API endpoint to save direct mode setting to config file"""
     try:
-        # Get the direct mode setting from the request
-        data = request.json
-        if not data or 'direct_mode' not in data:
-            return jsonify({"success": False, "error": "Invalid request format"})
+        data = request.get_json()
+        direct_mode = data.get('direct_mode', False)
         
-        # Load current config
+        # Update sensor system state immediately
+        sensor_system.DIRECT_MODE = direct_mode
+        
+        # Update config file
         config = load_config()
+        config['direct_mode'] = direct_mode
+        save_config(config)
         
-        # Update direct mode setting
-        new_mode = bool(data['direct_mode'])
-        config['direct_mode'] = new_mode
-        
-        # Save config
-        if save_config(config):
-            logger.info(f"Direct mode setting saved to config: {'DIRECT' if new_mode else 'PROXY'}")
-            return jsonify({"success": True})
-        else:
-            return jsonify({"success": False, "error": "Failed to save configuration"})
+        logger.info(f"Direct mode setting updated to {'ON' if direct_mode else 'OFF'} and saved to config")
+        return jsonify({"success": True, "message": "Direct mode setting saved"})
     except Exception as e:
         logger.error(f"Failed to save direct mode setting: {e}")
         return jsonify({"success": False, "error": str(e)})
+
+# --- SC7A20H Calibration Endpoints ---
+
+@app.route('/api/start_calibration', methods=['POST'])
+@login_required
+def start_calibration_endpoint():
+    """API endpoint to start SC7A20H calibration"""
+    if not sensor_system:
+        return jsonify({"success": False, "error": "Sensor system not initialized"}), 500
+    
+    success = sensor_system.start_calibration()
+    if success:
+        return jsonify({"success": True, "message": "Calibration started"})
+    else:
+        # Check status to provide more specific error
+        status = sensor_system.get_calibration_status()
+        error_msg = status.get("status_text", "Failed to start calibration (unknown reason)")
+        if "already in progress" in error_msg.lower():
+             return jsonify({"success": False, "error": "Calibration is already in progress."}), 409 # Conflict
+        elif "not initialized" in error_msg.lower():
+            return jsonify({"success": False, "error": "Sensor not initialized. Cannot calibrate."}), 503 # Service Unavailable
+        else:
+             return jsonify({"success": False, "error": error_msg}), 500
+
+@app.route('/api/calibration_status')
+@login_required
+def get_calibration_status_endpoint():
+    """API endpoint to get SC7A20H calibration status and sensor readings"""
+    if not sensor_system:
+        return jsonify({"error": "Sensor system not initialized"}), 500
+        
+    status_data = sensor_system.get_calibration_status()
+    return jsonify(status_data)
+
+@app.route('/api/update_deadzone', methods=['POST'])
+@login_required
+def update_deadzone_endpoint():
+    """API endpoint to update the SC7A20H deadzone percentage"""
+    if not sensor_system:
+        return jsonify({"success": False, "error": "Sensor system not initialized"}), 500
+
+    try:
+        data = request.get_json()
+        deadzone_percent = data.get('deadzone_percent')
+        
+        if deadzone_percent is None:
+            return jsonify({"success": False, "error": "Missing 'deadzone_percent' parameter"}), 400
+
+        success, message = sensor_system.update_deadzone(deadzone_percent)
+        
+        if success:
+            return jsonify({"success": True, "message": message})
+        else:
+            return jsonify({"success": False, "error": message}), 400 # Bad request if value is invalid
+
+    except Exception as e:
+        logger.error(f"Failed to update deadzone: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
 
 def load_config():
     """Load configuration from file or create with defaults if it doesn't exist"""

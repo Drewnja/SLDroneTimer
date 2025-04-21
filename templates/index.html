@@ -37,6 +37,7 @@
         <div class="tabs">
             <button class="tab-button active" data-tab="main-tab">System Monitor</button>
             <button class="tab-button" data-tab="matches-tab">Local Matches</button>
+            <button class="tab-button" data-tab="sensors-tab">Sensors</button>
         </div>
     </div>
     
@@ -244,6 +245,58 @@
                 <div class="editor-controls">
                     <button id="confirm-clear-matches" class="btn btn-danger">Yes, Clear All Matches</button>
                     <button id="cancel-clear-matches" class="btn">Cancel</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sensors Tab -->
+        <div id="sensors-tab" class="tab-content">
+            <div class="card">
+                <div class="card-header">SC7A20H Accelerometer Status & Calibration</div>
+                <div class="card-body">
+                    <div id="sc7a20h-status-message" class="status-message hidden"></div>
+                    
+                    <div class="sensor-status-grid">
+                        <div>
+                            <span class="info-label">Sensor Status:</span>
+                            <span id="sc7a20h-init-status">Loading...</span>
+                        </div>
+                        <div>
+                            <span class="info-label">Calibration Status:</span>
+                            <span id="sc7a20h-calib-status">Loading...</span>
+                        </div>
+                        <div>
+                            <span class="info-label">Noise Threshold:</span>
+                            <span id="sc7a20h-threshold">Loading...</span>
+                        </div>
+                        <div>
+                            <span class="info-label">Current Magnitude:</span>
+                            <span id="sc7a20h-magnitude">Loading...</span>
+                        </div>
+                    </div>
+
+                    <hr>
+
+                    <div class="calibration-controls">
+                        <h4>Calibration</h4>
+                        <p>Place the sensor on a stable, level surface and ensure it is not moved during calibration.</p>
+                        <button id="start-calibration-btn" class="btn btn-primary">Start 10-Second Calibration</button>
+                        <p class="calibration-instructions hidden" id="calib-instructions">
+                            <strong>Calibration in progress... Do not move the sensor!</strong>
+                        </p>
+                    </div>
+
+                    <hr>
+
+                    <div class="deadzone-controls">
+                        <h4>Detection Deadzone</h4>
+                        <p>Increase threshold sensitivity beyond calibrated noise floor (0-100%). Disabled by default (0%).</p>
+                        <div class="input-group">
+                             <label for="deadzone-percent">Deadzone Percentage:</label>
+                            <input type="number" id="deadzone-percent" min="0" max="100" value="0">
+                            <button id="save-deadzone-btn" class="btn">Save Deadzone</button>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>

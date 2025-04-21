@@ -166,8 +166,48 @@ Connect your hardware components to the Raspberry Pi as follows:
 - Connect your start optical sensor between GPIO17 and GND
 - Connect your finish vibration sensor between GPIO27 and GND
 - Connect LEDs with appropriate resistors to GPIO22, GPIO23, and GPIO24
+- **(Optional) Connect SC7A20H Accelerometer:**
+    - Connect VCC to a 3.3V pin.
+    - Connect GND to a GND pin.
+    - Connect SCL to GPIO 3 (Pin 5).
+    - Connect SDA to GPIO 2 (Pin 3).
 
 ![GPIO Pinout](https://www.raspberrypi.com/documentation/computers/images/GPIO-Pinout-Diagram-2.png)
+
+### Finish Sensor Configuration
+
+The system supports two types of finish sensors working simultaneously:
+1.  **Vibration Sensor (GPIO):** Connected to `FINISH_VIBRO_PIN` (default GPIO27).
+2.  **SC7A20H Accelerometer (I2C):** An optional I2C accelerometer for more sensitive landing detection.
+
+#### SC7A20H Configuration (`config.json`)
+
+If using the SC7A20H, configure it in `config.json`:
+
+```json
+"sc7a20h": {
+    "enabled": true,         // Set to true to enable the sensor
+    "i2c_bus": 1,            // I2C bus number (usually 1 on RPi)
+    "noise_threshold": 0.0,  // Automatically set by calibration (leave as 0.0 initially)
+    "deadzone_percent": 0    // Optional deadzone (0-100), 0 = disabled
+}
+```
+
+- The system automatically attempts to detect the SC7A20H at the standard I2C address (0x19) on the specified bus during startup.
+- The `noise_threshold` is critical for accurate detection and **must be set via the calibration process** in the web UI.
+- The `deadzone_percent` adds a percentage buffer on top of the calibrated noise threshold. A value of 10 means the trigger level will be 110% of the calibrated threshold. It's disabled (0) by default.
+
+#### SC7A20H Calibration (Web UI)
+
+1.  Navigate to the **Sensors** tab in the web UI.
+2.  Ensure the sensor status shows "Initialized OK".
+3.  Place the sensor (and the landing platform it's attached to) on a stable surface where it will not be disturbed.
+4.  Click the **"Start 10-Second Calibration"** button.
+5.  **DO NOT MOVE** the sensor during the 10-second calibration period.
+6.  The system will measure the background vibration/noise and calculate the maximum acceleration magnitude during this period.
+7.  The `noise_threshold` will be automatically set to slightly above the measured maximum noise (110% of max noise).
+8.  The new threshold is automatically saved to `config.json`.
+9.  You can adjust the `Deadzone Percentage` if needed and click "Save Deadzone".
 
 ## Security Note
 

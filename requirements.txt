@@ -2,3 +2,5 @@ requests>=2.25.0
 RPi.GPIO>=0.7.0
 ntplib>=0.4.0
 Flask>=2.0.0
+sqlite3
+smbus2
