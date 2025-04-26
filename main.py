@@ -36,7 +36,7 @@ DEFAULT_CONFIG = {
         "port": 8000
     },
     "sc7a20h": {
-        "enabled": True,  # Allow disabling the sensor via config
+        "enabled": False,  # Allow disabling the sensor via config
         "i2c_bus": 1,
         "noise_threshold": 0.0, # Will be set by calibration
         "deadzone_percent": 0  # Disabled by default
