@@ -659,21 +659,31 @@ class SensorSystem:
         return success
     
     def send_post_request_landing(self, side, event_time):
-        """Send landing event and complete match record"""
+        """Send landing event and complete match record."""
         # Capture log before sending request
         finish_log = f"Landing event at {datetime.fromtimestamp(event_time).strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]}, side: {side}"
         logger.info(finish_log)
         
-        # Send primary request and get result
-        success = self.send_post_request(side, "landing", event_time)
+        # --- Conditional Primary Request ---
+        # Send primary request ONLY if NOT in Direct Mode
+        success = True # Assume success if we skip the primary request
+        response_data = "N/A (Direct Mode Landing - Primary request skipped)" # Default response for direct mode
         
-        # Get the response data regardless of success
-        response_data = getattr(self, "last_response_data", "No response data")
+        if not self.DIRECT_MODE:
+            logger.info("Proxy mode active: Sending primary landing request...")
+            success = self.send_post_request(side, "landing", event_time)
+            # Get the actual response data if request was sent
+            response_data = getattr(self, "last_response_data", "No response data")
+        else:
+            logger.info("Direct mode active: Skipping primary landing request to external server.")
+            # Keep success = True and the default response_data
+        # ----------------------------------
         
-        # Send log request regardless of primary request success
+        # Send log request regardless of primary request success OR direct mode
+        # This ensures the log server always receives the landing event
         self.send_log_request("landing", event_time)
         
-        # If we have a match in progress, complete it regardless of request success
+        # If we have a match in progress, complete it regardless of request success or mode
         if self.current_match["in_progress"]:
             # Complete match data
             start_time = self.current_match["start_time"]
