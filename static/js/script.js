@@ -4,7 +4,6 @@ let refreshTimer;
 let logSocket = null;
 let logPaused = false;
 let connectionLost = false;
-let sensorStatusIntervalId = null;
 
 // DOM Ready function
 document.addEventListener('DOMContentLoaded', function() {
@@ -30,9 +29,6 @@ function initPage() {
     
     // Set up clear matches functionality
     setupClearMatches();
-    
-    // Initialize sensor tab functionality
-    initSensorsTab();
     
     // System buttons event listeners
     const ntpForm = document.getElementById('ntp-sync-form');
@@ -265,33 +261,19 @@ function killScriptProcess() {
 
 function setupTabs() {
     const tabButtons = document.querySelectorAll('.tab-button');
-    const tabContents = document.querySelectorAll('.tab-content');
-
+    
     tabButtons.forEach(button => {
-        button.addEventListener('click', () => {
-            // Deactivate all buttons and content
-            tabButtons.forEach(btn => btn.classList.remove('active'));
-            tabContents.forEach(content => content.classList.remove('active'));
-
-            // Activate the clicked button and corresponding content
-            button.classList.add('active');
-            const tabId = button.getAttribute('data-tab');
-            const activeContent = document.getElementById(tabId);
-            if (activeContent) {
-                activeContent.classList.add('active');
-            }
+        button.addEventListener('click', function() {
+            // Remove active class from all buttons and content
+            document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
             
-            // Start/Stop sensor polling based on active tab
-            if (tabId === 'sensors-tab') {
-                startSensorStatusPolling();
-            } else {
-                stopSensorStatusPolling();
-            }
+            // Add active class to clicked button
+            this.classList.add('active');
             
-            // Update match details setup if matches tab is activated
-            if (tabId === 'matches-tab') {
-                setupMatchDetailToggles();
-            }
+            // Show corresponding content
+            const tabId = this.getAttribute('data-tab');
+            document.getElementById(tabId).classList.add('active');
         });
     });
 }
@@ -732,193 +714,4 @@ function shutdownRaspberryPi() {
         resultElement.className = 'error-message';
         resultElement.innerHTML = `Request failed: ${error}`;
     });
-}
-
-function initSensorsTab() {
-    const startCalibrationBtn = document.getElementById('start-calibration-btn');
-    const saveDeadzoneBtn = document.getElementById('save-deadzone-btn');
-
-    if (startCalibrationBtn) {
-        startCalibrationBtn.addEventListener('click', handleStartCalibration);
-    }
-
-    if (saveDeadzoneBtn) {
-        saveDeadzoneBtn.addEventListener('click', handleSaveDeadzone);
-    }
-
-    // Initial status fetch when the tab might be active on load
-    if (document.getElementById('sensors-tab').classList.contains('active')) {
-        startSensorStatusPolling();
-    }
-}
-
-function handleStartCalibration() {
-    showSensorStatusMessage('info', 'Requesting calibration start...');
-    const btn = document.getElementById('start-calibration-btn');
-    btn.disabled = true; // Disable button immediately
-    document.getElementById('calib-instructions').classList.remove('hidden');
-
-    fetch('/api/start_calibration', { method: 'POST' })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                showSensorStatusMessage('success', 'Calibration started! Do not move the sensor.');
-                // Status will update via polling
-            } else {
-                showSensorStatusMessage('error', `Failed to start calibration: ${data.error}`);
-                btn.disabled = false; // Re-enable on failure
-                document.getElementById('calib-instructions').classList.add('hidden');
-            }
-            // Start polling immediately after request, regardless of success/fail to get latest status
-            startSensorStatusPolling(); 
-        })
-        .catch(error => {
-            showSensorStatusMessage('error', `Error starting calibration: ${error}`);
-            btn.disabled = false; // Re-enable on error
-            document.getElementById('calib-instructions').classList.add('hidden');
-        });
-}
-
-function handleSaveDeadzone() {
-    const deadzoneInput = document.getElementById('deadzone-percent');
-    const deadzoneValue = parseInt(deadzoneInput.value, 10);
-
-    if (isNaN(deadzoneValue) || deadzoneValue < 0 || deadzoneValue > 100) {
-        showSensorStatusMessage('error', 'Invalid deadzone value. Please enter a number between 0 and 100.');
-        return;
-    }
-
-    showSensorStatusMessage('info', 'Saving deadzone...');
-    document.getElementById('save-deadzone-btn').disabled = true;
-
-    fetch('/api/update_deadzone', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ deadzone_percent: deadzoneValue })
-    })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                showSensorStatusMessage('success', data.message);
-            } else {
-                showSensorStatusMessage('error', `Failed to save deadzone: ${data.error}`);
-            }
-             document.getElementById('save-deadzone-btn').disabled = false;
-             // Fetch status again to confirm update
-             fetchSensorStatus(); 
-        })
-        .catch(error => {
-            showSensorStatusMessage('error', `Error saving deadzone: ${error}`);
-            document.getElementById('save-deadzone-btn').disabled = false;
-        });
-}
-
-function fetchSensorStatus() {
-    fetch('/api/calibration_status')
-        .then(response => response.json())
-        .then(data => {
-            updateSensorStatusUI(data);
-        })
-        .catch(error => {
-            console.error("Error fetching sensor status:", error);
-            // Optional: display an error in the UI
-            document.getElementById('sc7a20h-init-status').textContent = 'Error loading status';
-             document.getElementById('sc7a20h-calib-status').textContent = 'Error';
-             document.getElementById('sc7a20h-threshold').textContent = 'Error';
-             document.getElementById('sc7a20h-magnitude').textContent = 'Error';
-        });
-}
-
-function updateSensorStatusUI(data) {
-    const initStatusEl = document.getElementById('sc7a20h-init-status');
-    const calibStatusEl = document.getElementById('sc7a20h-calib-status');
-    const thresholdEl = document.getElementById('sc7a20h-threshold');
-    const magnitudeEl = document.getElementById('sc7a20h-magnitude');
-    const deadzoneInput = document.getElementById('deadzone-percent');
-    const calibBtn = document.getElementById('start-calibration-btn');
-    const calibInstructions = document.getElementById('calib-instructions');
-
-    // Update Init Status (more descriptive)
-    if (data.status_text && data.status_text.includes("Sensor not initialized")) {
-         initStatusEl.textContent = 'Error: Not Initialized';
-         initStatusEl.className = 'error';
-         thresholdEl.textContent = 'N/A';
-         magnitudeEl.textContent = 'N/A';
-         calibBtn.disabled = true;
-    } else if (data.status_text && data.status_text.includes("No sensor data")) {
-         initStatusEl.textContent = 'Error: No Data';
-         initStatusEl.className = 'error';
-         thresholdEl.textContent = 'N/A';
-         magnitudeEl.textContent = 'N/A';
-         calibBtn.disabled = true;
-    } else {
-         initStatusEl.textContent = 'Initialized OK';
-         initStatusEl.className = 'success';
-         calibBtn.disabled = data.is_calibrating; // Disable only if calibrating
-    }
-    
-    // Update Calibration Status Text
-    calibStatusEl.textContent = data.status_text || 'Unknown';
-    if (data.status_text && data.status_text.toLowerCase().includes('error')) {
-        calibStatusEl.classList.add('error');
-        calibStatusEl.classList.remove('info', 'success');
-    } else if (data.is_calibrating) {
-         calibStatusEl.classList.add('info');
-         calibStatusEl.classList.remove('error', 'success');
-    } else {
-         calibStatusEl.classList.add('success');
-         calibStatusEl.classList.remove('error', 'info');
-    }
-
-    // Update Threshold
-    thresholdEl.textContent = data.noise_threshold !== null ? data.noise_threshold.toFixed(4) : 'N/A';
-
-    // Update Current Magnitude
-    magnitudeEl.textContent = data.current_magnitude !== null ? data.current_magnitude.toFixed(4) : 'N/A';
-
-    // Update Deadzone Input
-    if (deadzoneInput && data.deadzone_percent !== null) {
-        // Only update if the input doesn't currently have focus to avoid user typing interruption
-        if (document.activeElement !== deadzoneInput) {
-            deadzoneInput.value = data.deadzone_percent;
-        }
-    }
-
-    // Update Calibration Button state and instructions visibility
-    calibBtn.disabled = data.is_calibrating;
-    if (data.is_calibrating) {
-        calibInstructions.classList.remove('hidden');
-    } else {
-        calibInstructions.classList.add('hidden');
-    }
-}
-
-function showSensorStatusMessage(type, message) {
-    const messageEl = document.getElementById('sc7a20h-status-message');
-    messageEl.textContent = message;
-    messageEl.className = `status-message ${type}`; // Reset classes and add new type
-    messageEl.classList.remove('hidden');
-
-    // Optional: Auto-hide after a few seconds
-    setTimeout(() => {
-        messageEl.classList.add('hidden');
-    }, 5000);
-}
-
-function startSensorStatusPolling() {
-    if (sensorStatusIntervalId === null) {
-        console.log("Starting sensor status polling.");
-        fetchSensorStatus(); // Fetch immediately
-        sensorStatusIntervalId = setInterval(fetchSensorStatus, 2000); // Poll every 2 seconds
-    }
-}
-
-function stopSensorStatusPolling() {
-    if (sensorStatusIntervalId !== null) {
-        console.log("Stopping sensor status polling.");
-        clearInterval(sensorStatusIntervalId);
-        sensorStatusIntervalId = null;
-    }
 } 

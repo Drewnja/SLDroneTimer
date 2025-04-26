@@ -11,11 +11,6 @@ import select
 import threading
 import logging
 import os
-try:
-    from smbus2 import SMBus
-except ImportError:
-    SMBus = None # Allow running without smbus2 for testing without hardware
-    logging.warning("smbus2 library not found. I2C sensor functionality will be disabled.")
 
 # Import web server module
 import web_server
@@ -34,12 +29,6 @@ DEFAULT_CONFIG = {
     "log_server": {
         "host": "localhost",
         "port": 8000
-    },
-    "sc7a20h": {
-        "enabled": False,  # Allow disabling the sensor via config
-        "i2c_bus": 1,
-        "noise_threshold": 0.0, # Will be set by calibration
-        "deadzone_percent": 0  # Disabled by default
     },
     "ntp_servers": [
         "pool.ntp.org",
@@ -115,13 +104,6 @@ log_server_config = config.get("log_server", DEFAULT_CONFIG["log_server"])
 LOG_SERVER_HOST = log_server_config.get("host", DEFAULT_CONFIG["log_server"]["host"])
 LOG_SERVER_PORT = log_server_config.get("port", DEFAULT_CONFIG["log_server"]["port"])
 
-# SC7A20H settings
-sc7a20h_config = config.get("sc7a20h", DEFAULT_CONFIG["sc7a20h"])
-SC7A20H_ENABLED = sc7a20h_config.get("enabled", DEFAULT_CONFIG["sc7a20h"]["enabled"])
-SC7A20H_I2C_BUS = sc7a20h_config.get("i2c_bus", DEFAULT_CONFIG["sc7a20h"]["i2c_bus"])
-SC7A20H_NOISE_THRESHOLD = sc7a20h_config.get("noise_threshold", DEFAULT_CONFIG["sc7a20h"]["noise_threshold"])
-SC7A20H_DEADZONE_PERCENT = sc7a20h_config.get("deadzone_percent", DEFAULT_CONFIG["sc7a20h"]["deadzone_percent"])
-
 # Pin definitions (BCM mode)
 START_OPT_PIN = 17  # Adjust as needed for your RPi connections
 FINISH_VIBRO_PIN = 27  # Adjust as needed for your RPi connections
@@ -146,10 +128,6 @@ current_match = {
     "start_response": None,
     "in_progress": False
 }
-
-# SC7A20H Register Addresses (example, refer to datasheet)
-SC7A20H_CTRL_REG1 = 0x20
-SC7A20H_OUT_X_L = 0x28
 
 class SensorSystem:
     """Main sensor system class that encapsulates all functionality"""
@@ -180,21 +158,6 @@ class SensorSystem:
         log_server_config = self.config.get("log_server", DEFAULT_CONFIG["log_server"])
         self.LOG_SERVER_HOST = log_server_config.get("host", DEFAULT_CONFIG["log_server"]["host"])
         self.LOG_SERVER_PORT = log_server_config.get("port", DEFAULT_CONFIG["log_server"]["port"])
-
-        # SC7A20H settings
-        sc7a20h_config = self.config.get("sc7a20h", DEFAULT_CONFIG["sc7a20h"])
-        self.SC7A20H_ENABLED = sc7a20h_config.get("enabled", DEFAULT_CONFIG["sc7a20h"]["enabled"])
-        self.SC7A20H_I2C_BUS = sc7a20h_config.get("i2c_bus", DEFAULT_CONFIG["sc7a20h"]["i2c_bus"])
-        self.SC7A20H_I2C_ADDRESS = None # Will be set after scanning
-        self.noise_threshold = sc7a20h_config.get("noise_threshold", DEFAULT_CONFIG["sc7a20h"]["noise_threshold"])
-        self.deadzone_percent = sc7a20h_config.get("deadzone_percent", DEFAULT_CONFIG["sc7a20h"]["deadzone_percent"])
-        self.i2c_bus = None
-        self.sc7a20h_initialized = False
-        self.last_accel_magnitude = 0.0
-        self.is_calibrating = False
-        self.calibration_status = "Idle"
-        self.calibration_thread = None
-        self.landing_cooldown_end_time = 0 # Debounce timer
         
         # State variables
         self.ff = False
@@ -240,30 +203,27 @@ class SensorSystem:
         raise Exception("Failed to synchronize with any NTP server")
 
     def setup(self):
-        """Initialize GPIO, network, NTP, and sensors"""
+        """Initialize GPIO, network, and NTP"""
         logger.info("=== Starting Sensor System ===")
         
         # Initialize GPIO
-        logger.info("Initializing GPIO pins...")
+        logger.info("Initializing pins...")
         GPIO.setmode(GPIO.BCM)
         GPIO.setwarnings(False)
+        
+        # Setup pins
         GPIO.setup(START_OPT_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)  # Pulled up, active low
         GPIO.setup(FINISH_VIBRO_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)  # Pulled up, active low
         GPIO.setup(LED_START_PIN, GPIO.OUT)
         GPIO.setup(LED_FINISH_PIN, GPIO.OUT)
         GPIO.setup(LED_FINISH2_PIN, GPIO.OUT)
+        logger.info("Pins initialized")
+        
+        # Initialize all LEDs to OFF
         GPIO.output(LED_START_PIN, GPIO.LOW)
         GPIO.output(LED_FINISH_PIN, GPIO.LOW)
         GPIO.output(LED_FINISH2_PIN, GPIO.LOW)
-        logger.info("GPIO Pins initialized")
         
-        # Initialize SC7A20H Sensor if enabled
-        if self.SC7A20H_ENABLED:
-            self._scan_and_init_sc7a20h()
-        else:
-            logger.info("SC7A20H sensor is disabled in configuration.")
-            self.sc7a20h_initialized = False
-
         if DEBUG_MODE:
             logger.info("=== DEBUG MODE ACTIVE ===")
             logger.info("Press 'S' to simulate START sensor")
@@ -338,110 +298,6 @@ class SensorSystem:
             logger.warning("=== Setup Complete with Warnings ===")
             logger.warning("Some services are not available, but system will continue to function.")
     
-    def _scan_and_init_sc7a20h(self):
-        """Scan for the SC7A20H sensor on the configured I2C bus and initialize it."""
-        if SMBus is None:
-            logger.error("Cannot initialize SC7A20H: smbus2 library not available.")
-            self.sc7a20h_initialized = False
-            return
-            
-        bus_num = self.SC7A20H_I2C_BUS
-        # Standard address for SC7A20H
-        potential_address = 0x19 
-
-        logger.info(f"Attempting to initialize SC7A20H on I2C bus {bus_num} at address 0x{potential_address:02x}...")
-        
-        try:
-            self.i2c_bus = SMBus(bus_num)
-            
-            # Try reading a known register (like WHO_AM_I, if available, or CTRL_REG1)
-            # This verifies the device is present and responding.
-            # SC7A20H doesn't have a specific WHO_AM_I at 0x0F like many others.
-            # We can try reading CTRL_REG1 (0x20) which should be readable.
-            try:
-                self.i2c_bus.read_byte_data(potential_address, SC7A20H_CTRL_REG1)
-                self.SC7A20H_I2C_ADDRESS = potential_address
-                logger.info(f"SC7A20H sensor found at address 0x{self.SC7A20H_I2C_ADDRESS:02x} on bus {bus_num}.")
-
-                # Basic initialization (Enable axes, set range - adjust as needed)
-                # Example: Write 0x57 to CTRL_REG1 (100Hz ODR, Normal mode, X/Y/Z enabled)
-                try:
-                    self.i2c_bus.write_byte_data(self.SC7A20H_I2C_ADDRESS, SC7A20H_CTRL_REG1, 0x57)
-                    logger.info("SC7A20H initialized (CTRL_REG1 set to 0x57).")
-                    self.sc7a20h_initialized = True
-                except OSError as write_err:
-                     logger.error(f"Failed to write initialization data to SC7A20H at 0x{potential_address:02x}: {write_err}")
-                     self.sc7a20h_initialized = False
-                     if self.i2c_bus:
-                         self.i2c_bus.close()
-                     self.i2c_bus = None
-
-            except OSError:
-                logger.error(f"No device responded at address 0x{potential_address:02x} on I2C bus {bus_num}. SC7A20H setup failed.")
-                self.sc7a20h_initialized = False
-                if self.i2c_bus:
-                    self.i2c_bus.close()
-                self.i2c_bus = None
-                
-        except FileNotFoundError:
-            logger.error(f"I2C bus {bus_num} not found. Ensure I2C is enabled in Raspberry Pi configuration (raspi-config). SC7A20H setup failed.")
-            self.sc7a20h_initialized = False
-            self.i2c_bus = None
-        except Exception as e:
-            logger.error(f"An unexpected error occurred during I2C setup: {e}")
-            self.sc7a20h_initialized = False
-            if self.i2c_bus:
-                self.i2c_bus.close()
-            self.i2c_bus = None
-
-    def _read_sc7a20h_accel(self):
-        """Read raw acceleration data from SC7A20H."""
-        if not self.sc7a20h_initialized or self.i2c_bus is None:
-            return None # Return None if sensor not ready
-
-        try:
-            # Read 6 bytes starting from OUT_X_L (0x28)
-            # The SC7A20H requires setting the MSB of the register address for multi-byte reads
-            data = self.i2c_bus.read_i2c_block_data(self.SC7A20H_I2C_ADDRESS, SC7A20H_OUT_X_L | 0x80, 6)
-            
-            # Combine bytes (little-endian) and convert to signed int16
-            x_raw = int.from_bytes(bytes([data[0], data[1]]), byteorder='little', signed=True)
-            y_raw = int.from_bytes(bytes([data[2], data[3]]), byteorder='little', signed=True)
-            z_raw = int.from_bytes(bytes([data[4], data[5]]), byteorder='little', signed=True)
-            
-            # Convert raw data to actual acceleration (depends on sensitivity setting)
-            # Assuming default +/- 2g range (check datasheet for sensitivity)
-            # Sensitivity might be ~1 mg/LSB (need to confirm from datasheet)
-            # For now, we'll just use the raw magnitude change.
-            return x_raw, y_raw, z_raw
-            
-        except OSError as e:
-            logger.error(f"Failed to read from SC7A20H: {e}")
-            # Consider re-initializing or flagging an error state here
-            self.sc7a20h_initialized = False # Mark as uninitialized on error
-            if self.i2c_bus:
-                 self.i2c_bus.close()
-            self.i2c_bus = None
-            return None
-        except Exception as e:
-            logger.error(f"Unexpected error reading SC7A20H: {e}")
-            self.sc7a20h_initialized = False # Mark as uninitialized on error
-            if self.i2c_bus:
-                 self.i2c_bus.close()
-            self.i2c_bus = None
-            return None
-
-    def _calculate_accel_magnitude(self, accel_data):
-        """Calculate the magnitude of the acceleration vector."""
-        if accel_data is None:
-            return 0.0
-        x, y, z = accel_data
-        # Simple magnitude calculation (sqrt(x^2 + y^2 + z^2))
-        # We can potentially skip the sqrt for comparison if performance is critical
-        # magnitude_sq = x*x + y*y + z*z 
-        magnitude = (x*x + y*y + z*z)**0.5
-        return magnitude
-
     def get_current_time(self):
         """Get current time with millisecond precision (using system time)"""
         # Use system time directly without NTP sync
@@ -659,31 +515,31 @@ class SensorSystem:
         return success
     
     def send_post_request_landing(self, side, event_time):
-        """Send landing event and complete match record."""
+        """Send landing event and complete match record"""
         # Capture log before sending request
         finish_log = f"Landing event at {datetime.fromtimestamp(event_time).strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]}, side: {side}"
         logger.info(finish_log)
         
-        # --- Conditional Primary Request ---
-        # Send primary request ONLY if NOT in Direct Mode
-        success = True # Assume success if we skip the primary request
-        response_data = "N/A (Direct Mode Landing - Primary request skipped)" # Default response for direct mode
-        
+        # Send primary request and get result, ONLY IF NOT IN DIRECT MODE
+        success = True  # Default to success if skipping primary request
+        response_data = "Request skipped (Direct Mode)"
         if not self.DIRECT_MODE:
-            logger.info("Proxy mode active: Sending primary landing request...")
+            logger.info("Sending landing event to primary server (Proxy Mode)")
             success = self.send_post_request(side, "landing", event_time)
-            # Get the actual response data if request was sent
             response_data = getattr(self, "last_response_data", "No response data")
         else:
-            logger.info("Direct mode active: Skipping primary landing request to external server.")
-            # Keep success = True and the default response_data
-        # ----------------------------------
+            logger.info("Skipping landing event send to primary server (Direct Mode)")
+            # Although we skip the primary request, we still need to update NTP
+            try:
+                ntp_response = self.try_ntp_sync()
+                logger.info("NTP time updated after landing event processing (Direct Mode)")
+            except Exception as e:
+                logger.warning(f"Could not update NTP time after landing event (Direct Mode): {e}")
         
-        # Send log request regardless of primary request success OR direct mode
-        # This ensures the log server always receives the landing event
+        # Send log request regardless of primary request success or mode
         self.send_log_request("landing", event_time)
         
-        # If we have a match in progress, complete it regardless of request success or mode
+        # If we have a match in progress, complete it regardless of request success
         if self.current_match["in_progress"]:
             # Complete match data
             start_time = self.current_match["start_time"]
@@ -802,28 +658,6 @@ class SensorSystem:
                 current_start_state = GPIO.input(START_OPT_PIN)
                 current_finish_state = GPIO.input(FINISH_VIBRO_PIN)
                 
-                # Read SC7A20H if initialized and not calibrating
-                sc7a20h_triggered = False
-                if self.sc7a20h_initialized and not self.is_calibrating:
-                    accel_data = self._read_sc7a20h_accel()
-                    if accel_data:
-                        current_magnitude = self._calculate_accel_magnitude(accel_data)
-                        self.last_accel_magnitude = current_magnitude # Store for status display
-                        
-                        # Calculate trigger threshold with deadzone
-                        effective_threshold = self.noise_threshold * (1 + self.deadzone_percent / 100.0)
-                        
-                        # Check if magnitude exceeds threshold
-                        if current_magnitude > effective_threshold:
-                            # Check cooldown timer
-                            if time.time() > self.landing_cooldown_end_time:
-                                sc7a20h_triggered = True
-                                logger.info(f"SC7A20H Trigger! Magnitude: {current_magnitude:.4f} > Threshold: {effective_threshold:.4f}")
-                                # Set cooldown (500ms)
-                                self.landing_cooldown_end_time = time.time() + 0.5 
-                            # else: # Optional: Log cooldown active.
-                            #     logger.debug("SC7A20H cooldown active.")
-                
                 # Debug mode - check for keyboard input only if we have an interactive terminal
                 if self.DEBUG_MODE and has_interactive_terminal:
                     key = self.check_keyboard_input()
@@ -841,7 +675,6 @@ class SensorSystem:
                         # Reset the sensor states to prevent additional triggers
                         current_finish_state = True
                         last_finish_state = True
-                        sc7a20h_triggered = False # Prevent double trigger in debug
                     elif key == 'Q':
                         logger.info("DEBUG: Quitting program")
                         break
@@ -881,73 +714,58 @@ class SensorSystem:
                 else:
                     GPIO.output(LED_START_PIN, GPIO.LOW)
                 
-                # Check finish VIBRO sensor state changes
+                # Check finish sensor state changes
                 if current_finish_state != last_finish_state:
-                    logger.info(f"Finish Vibro sensor state changed to: {'INACTIVE' if current_finish_state else 'ACTIVE'}")
-                    logger.info(f"Finish Vibro sensor GPIO pin {FINISH_VIBRO_PIN} value: {current_finish_state}")
+                    logger.info(f"Finish sensor state changed to: {'INACTIVE' if current_finish_state else 'ACTIVE'}")
+                    logger.info(f"Finish sensor GPIO pin {FINISH_VIBRO_PIN} value: {current_finish_state}")
                     logger.info(f"Start sensor state when finish changed: {'INACTIVE' if current_start_state else 'ACTIVE'}")
                     last_finish_state = current_finish_state
                 
-                # Determine if landing event should be triggered by EITHER sensor
-                vibro_triggered = (not current_finish_state)
-                landing_triggered = (vibro_triggered or sc7a20h_triggered)
-
-                # Finish sensor logic (landing event)
-                if landing_triggered and current_start_state:  # Landing trigger AND start gate is clear
-                    # Check cooldown (only applies to SC7A20H but check here avoids double-sending if both trigger)
-                    if time.time() > self.landing_cooldown_end_time:
-                        trigger_source = "VIBRO" if vibro_triggered else "SC7A20H"
-                        logger.info(f"Triggering landing event (Source: {trigger_source})")
-                        if vibro_triggered:
-                             logger.info(f"Finish Vibro sensor GPIO pin {FINISH_VIBRO_PIN} value: {current_finish_state}")
-                        if sc7a20h_triggered:
-                             logger.info(f"SC7A20H magnitude: {self.last_accel_magnitude:.4f}")
-                        logger.info(f"Start sensor GPIO pin {START_OPT_PIN} value: {current_start_state}")
+                # Finish sensor logic (active low, like start sensor)
+                if not current_finish_state and current_start_state:  # Both sensors are active LOW
+                    logger.info("Triggering landing event")
+                    logger.info(f"Finish sensor GPIO pin {FINISH_VIBRO_PIN} value: {current_finish_state}")
+                    logger.info(f"Start sensor GPIO pin {START_OPT_PIN} value: {current_start_state}")
+                    
+                    # Record timestamp immediately when the event is triggered
+                    # Use system time directly instead of get_current_time to avoid NTP sync
+                    event_time = time.time()
+                    
+                    GPIO.output(LED_FINISH_PIN, GPIO.HIGH)
+                    GPIO.output(LED_FINISH2_PIN, GPIO.LOW)
+                    
+                    # NTP sync before sending request removed as requested
+                    
+                    success = self.send_post_request_landing(self.SIDE, event_time)
+                    
+                    # Force NTP update AFTER landing event is processed
+                    try:
+                        ntp_response = self.try_ntp_sync()
+                        logger.info("NTP time updated after landing event processing")
+                    except Exception as e:
+                        logger.warning(f"Could not update NTP time after landing event: {e}")
+                    
+                    if success:
+                        logger.info("Landing event successfully processed")
                         
-                        # Record timestamp immediately when the event is triggered
-                        event_time = time.time()
+                        # Add delay to ensure the request is complete
+                        time.sleep(1)
                         
-                        # Set cooldown (only really needed for SC7A20H, but apply generally)
-                        self.landing_cooldown_end_time = time.time() + 0.5
+                        # Reset states for next detection
+                        self.ff = False
+                        self.start_activated = False
+                    else:
+                        logger.error("Landing event failed to process properly!")
+                        # Visual error indication - blink pattern
+                        self.error_blink_pattern(5)
                         
-                        GPIO.output(LED_FINISH_PIN, GPIO.HIGH)
-                        GPIO.output(LED_FINISH2_PIN, GPIO.LOW)
-                        
-                        success = self.send_post_request_landing(self.SIDE, event_time)
-                        
-                        # Force NTP update AFTER landing event is processed
-                        try:
-                            ntp_response = self.try_ntp_sync()
-                            logger.info("NTP time updated after landing event processing")
-                        except Exception as e:
-                            logger.warning(f"Could not update NTP time after landing event: {e}")
-                        
-                        if success:
-                            logger.info("Landing event successfully processed")
-                            
-                            # Add delay to ensure the request is complete
-                            time.sleep(1)
-                            
-                            # Reset states for next detection
-                            self.ff = False
-                            self.start_activated = False
-                        else:
-                            logger.error("Landing event failed to process properly!")
-                            # Visual error indication - blink pattern
-                            self.error_blink_pattern(5)
-                            
-                            # Reset states for next detection
-                            self.ff = False
-                            self.start_activated = False
-                    # else: # Optional log for cooldown
-                    #      logger.debug("Landing cooldown active, trigger ignored.")
+                        # Reset states for next detection
+                        self.ff = False
+                        self.start_activated = False
                 
-                elif not current_start_state: # If start gate is active, indicate waiting state
+                elif not current_start_state:
                     GPIO.output(LED_FINISH_PIN, GPIO.LOW)
                     GPIO.output(LED_FINISH2_PIN, GPIO.HIGH)
-                else: # If no landing and start gate clear, reset finish LEDs
-                    GPIO.output(LED_FINISH_PIN, GPIO.LOW)
-                    GPIO.output(LED_FINISH2_PIN, GPIO.LOW) # Turn off the waiting LED too
                 
                 # Short sleep to reduce CPU usage
                 time.sleep(0.01)
@@ -963,117 +781,6 @@ class SensorSystem:
                     pass
             GPIO.cleanup()
             logger.info("GPIO cleaned up")
-
-    def _save_config(self):
-        """Save the current configuration (including updated threshold/deadzone) to config.json"""
-        try:
-            # Update the noise threshold and deadzone in the loaded config object
-            if "sc7a20h" not in self.config:
-                self.config["sc7a20h"] = {}
-            self.config["sc7a20h"]["noise_threshold"] = round(self.noise_threshold, 4)
-            self.config["sc7a20h"]["deadzone_percent"] = self.deadzone_percent
-            
-            with open(CONFIG_FILE, 'w') as f:
-                json.dump(self.config, f, indent=4)
-            logger.info(f"Configuration saved to {CONFIG_FILE}")
-        except Exception as e:
-            logger.error(f"Failed to save configuration to {CONFIG_FILE}: {e}")
-
-    def _calibration_worker(self):
-        """Worker function for SC7A20H calibration, runs in a separate thread."""
-        logger.info("Starting SC7A20H calibration worker...")
-        self.calibration_status = "Calibrating: Warming up..."
-        time.sleep(1) # Short delay before starting
-
-        if not self.sc7a20h_initialized:
-            logger.error("Calibration failed: SC7A20H sensor not initialized.")
-            self.calibration_status = "Error: Sensor not initialized"
-            self.is_calibrating = False
-            return
-
-        logger.info("Calibration started. Do not move the sensor for 10 seconds.")
-        self.calibration_status = "Calibrating: Collecting data (10s)..."
-        
-        start_time = time.time()
-        end_time = start_time + 10
-        max_magnitude = 0.0
-        readings_count = 0
-
-        while time.time() < end_time:
-            accel_data = self._read_sc7a20h_accel()
-            if accel_data:
-                magnitude = self._calculate_accel_magnitude(accel_data)
-                if magnitude > max_magnitude:
-                    max_magnitude = magnitude
-                readings_count += 1
-            time.sleep(0.01) # Read roughly 100 times/sec
-
-        if readings_count == 0:
-            logger.error("Calibration failed: No data read from the sensor.")
-            self.calibration_status = "Error: No sensor data"
-            self.is_calibrating = False
-            return
-        
-        # Set the noise threshold slightly above the max observed noise
-        self.noise_threshold = max_magnitude * 1.1 
-        logger.info(f"Calibration complete. Max noise magnitude: {max_magnitude:.4f}, Readings: {readings_count}")
-        logger.info(f"New noise threshold set to: {self.noise_threshold:.4f}")
-        self.calibration_status = f"Finished. Threshold: {self.noise_threshold:.4f}"
-        
-        # Save the updated threshold to config
-        self._save_config()
-        
-        self.is_calibrating = False
-        logger.info("Calibration worker finished.")
-
-    def start_calibration(self):
-        """Starts the SC7A20H calibration process in a background thread."""
-        if self.is_calibrating:
-            logger.warning("Calibration is already in progress.")
-            return False
-            
-        if not self.sc7a20h_initialized:
-             logger.error("Cannot start calibration: SC7A20H sensor not initialized.")
-             self.calibration_status = "Error: Sensor not initialized"
-             return False
-
-        logger.info("Initiating SC7A20H calibration.")
-        self.is_calibrating = True
-        self.calibration_status = "Starting..."
-        # Start the worker in a daemon thread so it doesn't block exit
-        self.calibration_thread = threading.Thread(target=self._calibration_worker, daemon=True)
-        self.calibration_thread.start()
-        return True
-
-    def get_calibration_status(self):
-         """Returns the current calibration status."""
-         # Include current sensor readings if not calibrating and initialized
-         status_data = {
-             "status_text": self.calibration_status,
-             "is_calibrating": self.is_calibrating,
-             "noise_threshold": round(self.noise_threshold, 4),
-             "deadzone_percent": self.deadzone_percent,
-             "current_magnitude": None
-         }
-         if not self.is_calibrating and self.sc7a20h_initialized:
-              status_data["current_magnitude"] = round(self.last_accel_magnitude, 4)
-         return status_data
-         
-    def update_deadzone(self, percent):
-        """Updates the deadzone percentage and saves it to config."""
-        try:
-            new_deadzone = int(percent)
-            if 0 <= new_deadzone <= 100:
-                self.deadzone_percent = new_deadzone
-                logger.info(f"Deadzone updated to {self.deadzone_percent}%")
-                self._save_config()
-                return True, "Deadzone updated successfully."
-            else:
-                 logger.warning(f"Invalid deadzone percentage received: {percent}")
-                 return False, "Deadzone must be between 0 and 100."
-        except ValueError:
-            logger.warning(f"Invalid deadzone value received: {percent}")
-            return False, "Deadzone must be an integer."
 
 
 def main():
