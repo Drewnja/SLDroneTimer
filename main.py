@@ -439,7 +439,7 @@ class SensorSystem:
             "event_type": event_type,
             "event_body": {
                 "side": side,
-                "absolute_time": round(event_time, 3)
+                "absolute_time": round(event_time, 0)
             }
         }
         
