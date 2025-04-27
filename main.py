@@ -432,29 +432,16 @@ class SensorSystem:
         """Send request directly to the server"""
         logger.info("Sending direct request to external server...")
         
-        # Prepare JSON data - structure depends on event type for DIRECT mode
-        if event_type == "take_off":
-            # Use absolute_time for take_off events in direct mode
-            json_data = {
-                "station_code": self.STATION_CODE,
-                "secure_key": self.SECURE_KEY,
-                "event_type": event_type,
+        # Prepare JSON data
+        json_data = {
+            "station_code": self.STATION_CODE,
+            "secure_key": self.SECURE_KEY,
+            "event_type": event_type,
+            "event_body": {
+                "side": side,
                 "absolute_time": round(event_time, 3)
             }
-            logger.info(f"Using 'absolute_time' key for {event_type} event.")
-        else:
-            # Use standard event_body structure for other events (e.g., test)
-            # Note: Landing events are currently skipped in direct mode for the primary request
-            json_data = {
-                "station_code": self.STATION_CODE,
-                "secure_key": self.SECURE_KEY,
-                "event_type": event_type,
-                "event_body": {
-                    "side": side,
-                    "time": round(event_time, 3)
-                }
-            }
-            logger.info(f"Using standard 'event_body.time' key for {event_type} event.")
+        }
         
         # Multiple retry attempts
         MAX_RETRIES = 3
